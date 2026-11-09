@@ -89,7 +89,7 @@ function PasswordModal({ onClose }: { onClose: () => void }) {
 
 const LICENSES = [
   ['React, React DOM', 'MIT'], ['TipTap(@tiptap/*), ProseMirror', 'MIT'], ['Vite', 'MIT'], ['TypeScript', 'Apache-2.0'],
-  ['Lucide 아이콘', 'ISC'], ['Inter · Noto Sans KR 글꼴', 'SIL OFL 1.1'], ['Fontsource 글꼴 패키지', 'MIT'], ['FastAPI, Pydantic', 'MIT'], ['Uvicorn', 'BSD-3-Clause'],
+  ['Lucide 아이콘', 'ISC'], ['FastAPI, Pydantic', 'MIT'], ['Uvicorn', 'BSD-3-Clause'],
   ['python-multipart', 'Apache-2.0'], ['nh3', 'MIT'], ['mammoth', 'BSD-2-Clause'], ['Pillow', 'MIT-CMU'], ['SQLite', 'Public Domain'],
 ]
 

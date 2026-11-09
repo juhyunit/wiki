@@ -5,7 +5,7 @@
 - 서버: FastAPI + SQLite(프로토타입) → 운영은 PostgreSQL + pg_trgm(asyncpg)
 ## 금지
 - @tiptap-pro, Tiptap Cloud, MinIO, pyhwp, pyhwpxlib, PyMuPDF, psycopg, ldap3, Redis, Java 의존 패키지
-- 외부 CDN·API·웹폰트(폰트는 Inter·Noto Sans KR 가변 글꼴을 @fontsource-variable로 번들), 사람 단위 권한(ACL) 테이블
+- 외부 CDN·API·웹폰트(폰트는 웹폰트 없이 시스템 글꼴 스택 사용), 사람 단위 권한(ACL) 테이블
 - 허용 라이선스(MIT, BSD, Apache-2.0, ISC, PostgreSQL, PSF, OFL) 밖 패키지 추가
 - 테스트를 고쳐서 통과시키기, 권한 검사 생략, 클라이언트가 보낸 HTML 저장
 ## 필수

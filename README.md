@@ -5,8 +5,8 @@
 
 - 화면: React + TypeScript + TipTap(MIT) 편집기 — 빌드된 화면이 `backend/app/static`에 들어 있어 **Node.js 없이 실행**됩니다.
 - 서버: Python FastAPI + SQLite(파일 1개) — 데이터는 `backend/data/` 폴더에 쌓입니다.
-- 라이선스: 사용한 구성요소는 모두 MIT·BSD·Apache-2.0·ISC·MIT-CMU·OFL(Inter·Noto Sans KR 글꼴) 계열입니다(기획서 12장 허용 목록).
-- 디자인: 은행 내부 업무 시스템 기준 — 네이비(#263B63) 상단 바·선택 메뉴·제목, 오렌지(#D97736)는 즐겨찾기·게시 대기·중요 표시에만, 바탕 #F7F8FA, 문서 화면은 카드 없는 흰 편집기형. 모서리 4px, 그림자는 떠 있는 메뉴에만. 글꼴은 Inter(영문·숫자)와 Noto Sans KR(한글)을 번들합니다.
+- 라이선스: 사용한 구성요소는 모두 MIT·BSD·Apache-2.0·ISC·MIT-CMU 계열입니다(기획서 12장 허용 목록).
+- 디자인: 은행 내부 업무 시스템 기준 — 네이비(#263B63) 상단 바·선택 메뉴·제목, 오렌지(#D97736)는 즐겨찾기·게시 대기·중요 표시에만, 바탕 #F7F8FA, 문서 화면은 카드 없는 흰 편집기형. 모서리 4px, 그림자는 떠 있는 메뉴에만. 글꼴은 Notion처럼 웹폰트 없이 운영체제 기본 글꼴을 씁니다(Windows: Segoe UI + 맑은 고딕, Mac: SF + Apple SD Gothic Neo).
 
 ---
 
@@ -152,7 +152,7 @@ npm run build:demo   # 서버 없는 데모(dist-demo) 빌드 — demo-public(_h
 python ../tools/export_demo_seed.py   # 예시 데이터를 바꿨다면 데모용 JSON 다시 생성
 ```
 
-글꼴은 가변 글꼴 `@fontsource-variable/inter`·`@fontsource-variable/noto-sans-kr`를 `main.tsx`에서 불러옵니다(코드는 시스템 고정폭 글꼴). 한글은 유니코드 구간별로 나뉘어 필요한 조각만 내려받습니다.
+글꼴은 웹폰트를 번들하지 않고 `styles.css`의 `--font`(Notion과 같은 시스템 글꼴 스택)를 씁니다. 망분리 PC에서도 별도 파일 없이 같은 글꼴로 보입니다.
 
 API 문서: `set WORKWIKI_API_DOCS=1` 후 실행하면 `http://localhost:8000/api/docs` (외부 CDN을 불러오므로 기본은 꺼 둠)
 

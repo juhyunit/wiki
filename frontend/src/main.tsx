@@ -1,7 +1,5 @@
 import { createRoot } from 'react-dom/client'
-// 글꼴(모두 OFL, 가변 글꼴): 영문·숫자는 Inter, 한글은 Noto Sans KR. 코드는 시스템 고정폭 글꼴
-import '@fontsource-variable/inter/wght.css'
-import '@fontsource-variable/noto-sans-kr/wght.css'
+// 글꼴은 웹폰트 없이 운영체제 기본 글꼴을 쓴다(styles.css의 --font, Notion과 같은 방식)
 import './styles.css'
 import { setApi } from './api/client'
 import { httpApi } from './api/http'
