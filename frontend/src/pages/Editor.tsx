@@ -1,0 +1,548 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { EditorContent, useEditor } from '@tiptap/react'
+import type { Editor as TEditor } from '@tiptap/react'
+import { AlertTriangle, CheckCircle2, CloudOff, FileClock, Loader2, Lock, MoreHorizontal, RotateCcw, Save, Trash2, Unlock, X } from 'lucide-react'
+import { api, ApiError } from '../api/client'
+import type { Doc, ManualDetail, WorkContent } from '../api/types'
+import { useApp } from '../app-context'
+import { Link } from '../components/Link'
+import { PageHeader } from '../components/PageHeader'
+import { ErrorBox, Modal, Spinner, useDialog, useToast } from '../components/ui'
+import { buildExtensions, cleanPastedHTML } from '../editor/extensions'
+import { Toolbar } from '../editor/Toolbar'
+import { navigate } from '../lib/router'
+import { CHANGE_TYPES, cx, fmtDateTime, fmtTime, storage } from '../lib/util'
+
+type SaveStatus = 'saved' | 'dirty' | 'saving' | 'offline' | 'lost'
+// base: 편집을 시작한 버전 번호, serverAt: 이 브라우저가 마지막으로 확인한 서버 작업본 저장 시각
+type Backup = { title: string; doc: Doc; at: number; base: number | null; serverAt: string | null }
+
+const backupKey = (id: number) => `ww:draft:${id}`
+
+function readBackup(id: number): Backup | null {
+  try {
+    return JSON.parse(storage.get(backupKey(id)) || 'null')
+  } catch {
+    return null
+  }
+}
+
+function insertImageNode(ed: TEditor, node: any, pos?: number) {
+  if (pos != null) return ed.chain().focus().insertContentAt(pos, node).run()
+  const { $from, empty } = ed.state.selection
+  const block = $from.parent
+  if (empty && block.isTextblock && block.content.size > 0) {
+    return ed.chain().focus().insertContentAt($from.after($from.depth), node).run()
+  }
+  return ed.chain().focus().insertContent(node).run()
+}
+
+function SaveIndicator({ status, savedAt }: { status: SaveStatus; savedAt: string | null }) {
+  if (status === 'saving') return <span className="save-ind"><Loader2 size={14} className="spin" /> 저장 중…</span>
+  if (status === 'dirty') return <span className="save-ind muted">입력 중…</span>
+  if (status === 'offline') return <span className="save-ind text-amber"><CloudOff size={14} /> 연결 끊김 — 이 브라우저에 임시 보관 중</span>
+  if (status === 'lost') return <span className="save-ind text-red"><Lock size={14} /> 편집 잠금 해제됨</span>
+  return <span className="save-ind text-green"><CheckCircle2 size={14} /> {savedAt ? `저장됨 ${fmtTime(savedAt)}` : '변경 없음'}</span>
+}
+
+function SaveModal({ detail, isFirst, onClose, onSave }: {
+  detail: ManualDetail; isFirst: boolean; onClose: () => void
+  onSave: (o: { change_type: string; change_reason: string; then: 'none' | 'request' | 'publish'; comment: string }) => Promise<void>
+}) {
+  const { me } = useApp()
+  const types = isFirst ? ['최초 작성', ...CHANGE_TYPES] : CHANGE_TYPES
+  const [ct, setCt] = useState(isFirst ? '최초 작성' : '')
+  const [reason, setReason] = useState('')
+  const skip = detail.dept_approval_mode === 'skip'
+  const selfOk = me.admin_depts.find((d) => d.id === detail.department_id)?.can_self_publish !== false
+  const canPublish = skip ? detail.perms.edit : detail.perms.publish_any && selfOk
+  const [then, setThen] = useState<'none' | 'request' | 'publish'>(canPublish ? 'publish' : 'request')
+  const [comment, setComment] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const submit = async () => {
+    if (!ct) return setErr('변경 사유를 고르세요.')
+    if (ct === '규정 개정' && !reason.trim()) return setErr('규정 개정은 관련 규정이나 개정 내용을 한 줄로 적어 주세요.')
+    setBusy(true)
+    setErr('')
+    try {
+      await onSave({ change_type: ct, change_reason: reason.trim(), then, comment: comment.trim() })
+    } catch (e: any) {
+      setErr(e.message)
+      setBusy(false)
+    }
+  }
+  return (
+    <Modal title="저장(버전 만들기)" onClose={onClose} width={520}
+      footer={<><button className="btn" onClick={onClose} disabled={busy}>취소</button>
+        <button className="btn btn-primary" onClick={submit} disabled={busy}>{busy ? '저장 중…' : then === 'publish' ? '저장하고 게시' : then === 'request' ? '저장하고 게시 요청' : '저장'}</button></>}>
+      <p className="muted small" style={{ marginTop: 0 }}>저장하면 새 버전이 이력에 남습니다. 게시 전까지 직원들은 기존 공식본을 봅니다.</p>
+      <div className="field">
+        <span>변경 사유</span>
+        <div className="seg">
+          {types.map((t) => <button key={t} type="button" className={cx('seg-btn', ct === t && 'on')} onClick={() => setCt(t)}>{t}</button>)}
+        </div>
+      </div>
+      <label className="field">
+        <span>내용 한 줄 {ct === '규정 개정' ? '(필수)' : '(선택)'}</span>
+        <input value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} placeholder={ct === '규정 개정' ? '예: 취업규칙 제32조 개정 반영' : '예: 결재선 기준 수정'} />
+      </label>
+      <div className="field">
+        <span>저장한 뒤</span>
+        <div className="radio-list">
+          <label className="radio"><input type="radio" checked={then === 'none'} onChange={() => setThen('none')} /> 저장만 하기 <span className="muted small">— 나중에 게시</span></label>
+          {!skip && detail.perms.request_publish && (
+            <label className="radio"><input type="radio" checked={then === 'request'} onChange={() => setThen('request')} /> 부서 관리자에게 게시 요청</label>
+          )}
+          {canPublish && (
+            <label className="radio"><input type="radio" checked={then === 'publish'} onChange={() => setThen('publish')} /> 바로 게시 <span className="muted small">— 제{detail.edition + 1}판{skip ? ' (승인 생략 부서)' : ''}</span></label>
+          )}
+          {!skip && detail.perms.publish_any && !selfOk && (
+            <p className="muted small">이 부서는 직무 분리 설정으로 본인이 만든 버전을 직접 게시할 수 없습니다.</p>
+          )}
+        </div>
+      </div>
+      {then !== 'none' && (
+        <label className="field"><span>{then === 'request' ? '요청 메모(선택)' : '게시 의견(선택)'}</span>
+          <input value={comment} maxLength={300} onChange={(e) => setComment(e.target.value)} /></label>
+      )}
+      {err && <div className="form-error">{err}</div>}
+    </Modal>
+  )
+}
+
+function EditorBody({ id, initial, onChange, onReady, readOnly }: {
+  id: number; initial: Doc; onChange: (doc: Doc) => void; onReady: (e: TEditor) => void; readOnly?: boolean
+}) {
+  const toast = useToast()
+  const editorRef = useRef<TEditor | null>(null)
+  const uploadImages = useCallback(async (files: File[], pos?: number) => {
+    for (const f of files) {
+      try {
+        const a = await api.upload(id, f)
+        const ed = editorRef.current
+        if (!ed) return
+        insertImageNode(ed, { type: 'image', attrs: { src: a.url, alt: a.name } }, pos)
+      } catch (e: any) {
+        toast(e.message, 'err')
+      }
+    }
+  }, [id])
+  const editor = useEditor({
+    extensions: buildExtensions({ placeholder: true }),
+    content: initial,
+    editable: !readOnly,
+    shouldRerenderOnTransaction: true,
+    editorProps: {
+      attributes: { class: 'prose editor-prose', spellcheck: 'false' },
+      transformPastedHTML: cleanPastedHTML,
+      handlePaste: (_view, event) => {
+        const files = Array.from(event.clipboardData?.files || []).filter((f) => f.type.startsWith('image/'))
+        const html = event.clipboardData?.getData('text/html')
+        if (files.length && !html) {
+          event.preventDefault()
+          uploadImages(files)
+          return true
+        }
+        return false
+      },
+      handleDrop: (view, event, _slice, moved) => {
+        if (moved) return false
+        const files = Array.from(event.dataTransfer?.files || []).filter((f) => f.type.startsWith('image/'))
+        if (!files.length) return false
+        event.preventDefault()
+        const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos
+        uploadImages(files, pos)
+        return true
+      },
+    },
+    onUpdate: ({ editor }) => onChange(editor.getJSON() as Doc),
+  })
+  useEffect(() => {
+    if (editor) {
+      editorRef.current = editor
+      onReady(editor)
+    }
+  }, [editor])
+  if (!editor) return null
+  return <EditorContent editor={editor} className="editor-content" />
+}
+
+export function EditorPage({ id }: { id: number }) {
+  const { me, tree, reloadTree, refreshMe } = useApp()
+  const toast = useToast()
+  const dialog = useDialog()
+  const [phase, setPhase] = useState<'loading' | 'locked' | 'ready' | 'error'>('loading')
+  const [error, setError] = useState('')
+  const [detail, setDetail] = useState<ManualDetail | null>(null)
+  const [holder, setHolder] = useState<{ user_name: string; since: string } | null>(null)
+  const [work, setWork] = useState<WorkContent | null>(null)
+  const [title, setTitle] = useState('')
+  const [status, setStatus] = useState<SaveStatus>('saved')
+  const [savedAt, setSavedAt] = useState<string | null>(null)
+  const [recovered, setRecovered] = useState(false)
+  const [showSave, setShowSave] = useState(false)
+  const [menu, setMenu] = useState(false)
+  const [editor, setEditor] = useState<TEditor | null>(null)
+
+  const latest = useRef<{ title: string; doc: Doc } | null>(null)
+  const serverAtRef = useRef<string | null>(null)
+  const baseRef = useRef<number | null>(null)
+  const dirty = useRef(false)
+  const timer = useRef<number | undefined>(undefined)
+  const retry = useRef<number | undefined>(undefined)
+  const leaving = useRef(false)
+  const imgInput = useRef<HTMLInputElement>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const docxInput = useRef<HTMLInputElement>(null)
+
+  // ---------------- 불러오기 + 편집 잠금
+  const load = useCallback(async () => {
+    setPhase('loading')
+    try {
+      const d = await api.manual(id, 'work')
+      setDetail(d)
+      if (!d.perms.edit) {
+        setError('이 매뉴얼을 편집할 권한이 없습니다.')
+        setPhase('error')
+        return
+      }
+      const lk = await api.lock(id)
+      if (!lk.ok) {
+        setHolder(lk.holder || null)
+        setPhase('locked')
+        return
+      }
+      const w = await api.workContent(id)
+      let doc = w.content_json
+      let t = w.title
+      const b = readBackup(id)
+      if (b && JSON.stringify(b.doc) !== JSON.stringify(doc)) {
+        // 그 사이 서버 내용이 바뀌지 않았을 때만 자동 복구, 바뀌었으면 묻는다(오래된 내용으로 덮어쓰기 방지)
+        const untouched = (b.base ?? null) === (w.base_version_no ?? null) && (b.serverAt ?? null) === (w.draft_saved_at ?? null)
+        const ok = untouched || (await dialog({
+          title: '저장되지 않은 입력이 있습니다',
+          message: <>이 브라우저에 {new Date(b.at).toLocaleString('ko-KR')}에 입력하던 내용이 남아 있습니다. 그 뒤에 서버의 내용이 바뀌었습니다
+            ({w.base_version_no ? `현재 v${w.base_version_no}` : '새 매뉴얼'}{w.draft_user_name ? `, ${w.draft_user_name} 님 작성 중` : ''}). 브라우저에 남은 내용으로 바꿀까요?</>,
+          confirmText: '브라우저 내용으로 복구', cancelText: '서버 내용 유지',
+        }))
+        if (ok) {
+          doc = b.doc
+          t = b.title
+          setRecovered(true)
+          dirty.current = true
+          setStatus('dirty')
+        } else storage.del(backupKey(id))
+      } else storage.del(backupKey(id))
+      serverAtRef.current = w.draft_saved_at
+      baseRef.current = w.base_version_no
+      latest.current = { title: t, doc }
+      setWork({ ...w, content_json: doc })
+      setTitle(t)
+      setSavedAt(w.draft_saved_at)
+      setPhase('ready')
+    } catch (e: any) {
+      setError(e.message)
+      setPhase('error')
+    }
+  }, [id, dialog])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  // ---------------- 자동 저장(입력이 멈추고 2초 뒤)
+  const flush = useCallback(async (keepalive = false) => {
+    window.clearTimeout(timer.current)
+    if (!dirty.current || !latest.current) return
+    const snap = latest.current
+    if (!keepalive) setStatus('saving')
+    try {
+      const r = await api.saveDraft(id, snap.title.trim() || '제목 없음', snap.doc, keepalive)
+      if (latest.current === snap) {
+        dirty.current = false
+        storage.del(backupKey(id))
+        if (!leaving.current) setStatus('saved')
+      }
+      serverAtRef.current = r.saved_at
+      if (!leaving.current) setSavedAt(r.saved_at)
+    } catch (e) {
+      if (leaving.current) return
+      if (e instanceof ApiError && e.status === 409) {
+        setStatus('lost')
+      } else {
+        setStatus('offline')
+        window.clearTimeout(retry.current)
+        retry.current = window.setTimeout(() => flush(), 10000)
+      }
+    }
+  }, [id])
+
+  const schedule = useCallback(() => {
+    if (!latest.current) return
+    dirty.current = true
+    setStatus((s) => (s === 'lost' ? s : 'dirty'))
+    storage.set(backupKey(id), JSON.stringify({ ...latest.current, at: Date.now(), base: baseRef.current, serverAt: serverAtRef.current }))
+    window.clearTimeout(timer.current)
+    timer.current = window.setTimeout(() => flush(), 2000)
+  }, [flush, id])
+
+  const onDocChange = useCallback((doc: Doc) => {
+    latest.current = { title: latest.current?.title ?? '', doc }
+    schedule()
+  }, [schedule])
+
+  const onTitleChange = (t: string) => {
+    setTitle(t)
+    if (latest.current) latest.current = { ...latest.current, title: t }
+    schedule()
+  }
+
+  // 복구한 내용은 바로 서버 작업본으로 올린다
+  useEffect(() => {
+    if (phase === 'ready' && recovered) timer.current = window.setTimeout(() => flush(), 500)
+  }, [phase, recovered])
+
+  // ---------------- 잠금 유지·해제
+  useEffect(() => {
+    if (phase !== 'ready') return
+    const hb = window.setInterval(async () => {
+      try {
+        const r = await api.lock(id)
+        if (!r.ok) setStatus('lost')
+      } catch {}
+    }, 60000)
+    const onHide = () => {
+      leaving.current = true
+      flush(true)
+      api.unlock(id).catch(() => {})
+    }
+    window.addEventListener('pagehide', onHide)
+    return () => {
+      window.clearInterval(hb)
+      window.removeEventListener('pagehide', onHide)
+      leaving.current = true
+      window.clearTimeout(retry.current)
+      flush(true).finally(() => api.unlock(id).catch(() => {}))
+    }
+  }, [phase, id])
+
+  // Ctrl+S = 저장(버전 만들기)
+  useEffect(() => {
+    if (phase !== 'ready') return
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        setShowSave(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [phase])
+
+  const relock = async () => {
+    const r = await api.lock(id)
+    if (r.ok) {
+      setStatus('dirty')
+      flush()
+      toast('편집 잠금을 다시 잡았습니다.')
+    } else toast(`${r.holder?.user_name} 님이 편집 중입니다. 입력한 내용은 이 브라우저에 보관되어 있습니다.`, 'err')
+  }
+
+  const doSave = async (o: { change_type: string; change_reason: string; then: 'none' | 'request' | 'publish'; comment: string }) => {
+    if (!latest.current || !detail) return
+    window.clearTimeout(timer.current)
+    const t = latest.current.title.trim()
+    if (!t) throw new Error('제목을 입력하세요.')
+    const v = await api.saveVersion(id, { title: t, content_json: latest.current.doc, change_type: o.change_type, change_reason: o.change_reason })
+    dirty.current = false
+    storage.del(backupKey(id))
+    let msg = `저장했습니다 (v${v.version_no})`
+    let dest = `/m/${id}?v=work`
+    try {
+      if (o.then === 'request') {
+        await api.requestPublish(id, o.comment || undefined)
+        msg = `저장하고 게시를 요청했습니다 (v${v.version_no})`
+      } else if (o.then === 'publish') {
+        const p = await api.publish(id, o.comment || undefined)
+        msg = `게시했습니다 — 제${p.edition}판 (v${v.version_no})`
+        dest = `/m/${id}`
+      }
+    } catch (e: any) {
+      toast(`저장은 됐지만 ${o.then === 'publish' ? '게시' : '게시 요청'}하지 못했습니다: ${e.message}`, 'err')
+    }
+    leaving.current = true
+    await api.unlock(id).catch(() => {})
+    toast(msg)
+    reloadTree()
+    refreshMe()
+    navigate(dest, { replace: true })
+  }
+
+  const insertLink = async () => {
+    if (!editor) return
+    const prev = editor.getAttributes('link').href || ''
+    const v = await dialog({ title: '링크', input: { label: '주소 (비우면 링크 해제)', placeholder: 'https://', defaultValue: prev }, confirmText: '적용' })
+    if (v === null) return
+    if (!v) return editor.chain().focus().extendMarkRange('link').unsetLink().run()
+    const href = /^(https?:|mailto:)/i.test(v) ? v : `https://${v}`
+    if (editor.state.selection.empty && !editor.isActive('link'))
+      editor.chain().focus().insertContent({ type: 'text', text: v, marks: [{ type: 'link', attrs: { href } }] }).run()
+    else editor.chain().focus().extendMarkRange('link').setLink({ href }).run()
+  }
+
+  const onPickImage = async (files: FileList | null) => {
+    if (!files || !editor) return
+    for (const f of Array.from(files)) {
+      try {
+        const a = await api.upload(id, f)
+        insertImageNode(editor, { type: 'image', attrs: { src: a.url, alt: a.name } })
+      } catch (e: any) {
+        toast(e.message, 'err')
+      }
+    }
+  }
+  const onPickFile = async (files: FileList | null) => {
+    if (!files || !editor) return
+    for (const f of Array.from(files)) {
+      try {
+        const a = await api.upload(id, f)
+        editor.chain().focus().insertContent([
+          { type: 'text', text: `📎 ${a.name}`, marks: [{ type: 'link', attrs: { href: a.url } }] },
+          { type: 'text', text: ' ' },
+        ]).run()
+        toast('파일을 첨부했습니다. 본문 링크와 문서 하단 첨부 목록에 표시됩니다.')
+      } catch (e: any) {
+        toast(e.message, 'err')
+      }
+    }
+  }
+  const onPickDocx = async (files: FileList | null) => {
+    const f = files?.[0]
+    if (!f || !editor) return
+    try {
+      toast('DOCX를 변환하는 중입니다…', 'info')
+      const r = await api.importDocx(id, f)
+      const empty = editor.getText().trim().length === 0
+      let mode: 'replace' | 'append' = 'replace'
+      if (!empty) {
+        const ok = await dialog({ title: 'DOCX 가져오기', message: '현재 내용을 변환 결과로 바꿀까요? “취소”를 누르면 현재 내용 뒤에 붙입니다.', confirmText: '바꾸기', cancelText: '뒤에 붙이기' })
+        mode = ok ? 'replace' : 'append'
+      }
+      if (mode === 'replace') editor.chain().focus().setContent(r.html, { emitUpdate: true }).run()
+      else editor.chain().focus('end').insertContent(r.html).run()
+      toast('가져왔습니다. 변환 결과는 초안이니 원본(첨부에 보관)과 비교해 다듬어 주세요.')
+    } catch (e: any) {
+      toast(e.message, 'err')
+    }
+  }
+
+  const discard = async () => {
+    setMenu(false)
+    const ok = await dialog({ title: '작성 중 내용 폐기', message: `자동 저장된 작성 중 내용을 지우고 마지막 버전(v${work?.base_version_no})으로 돌아갑니다.`, confirmText: '폐기', danger: true })
+    if (!ok) return
+    window.clearTimeout(timer.current)
+    dirty.current = false
+    storage.del(backupKey(id))
+    try {
+      await api.discardDraft(id)
+      leaving.current = true
+      await api.unlock(id).catch(() => {})
+      toast('작성 중 내용을 폐기했습니다.')
+      navigate(`/m/${id}?v=work`, { replace: true })
+    } catch (e: any) {
+      toast(e.message, 'err')
+    }
+  }
+
+  const crumbs = useMemo(() => detail ? [
+    { label: detail.department_name, to: `/d/${detail.department_id}`, code: tree.find((d) => d.id === detail.department_id)?.code },
+    { label: detail.title, to: `/m/${id}${detail.published ? '' : '?v=work'}` },
+    { label: '편집' },
+  ] : [{ label: '편집' }], [detail, tree])
+
+  if (phase === 'loading') return <><PageHeader crumbs={crumbs} /><div className="page"><Spinner /></div></>
+  if (phase === 'error') return <><PageHeader crumbs={crumbs} /><div className="page"><ErrorBox error={error} onRetry={load} /></div></>
+  if (phase === 'locked' && detail) {
+    return (
+      <>
+        <PageHeader crumbs={crumbs} actions={<Link to={`/m/${id}`} className="btn">보기로 돌아가기</Link>} />
+        <div className="page doc-page"><div className="doc-layout"><article className="doc">
+          <div className="banner banner-gray">
+            <Lock size={16} /> <span><strong>{holder?.user_name} 님이 {fmtTime(holder?.since)}부터 편집 중입니다.</strong> 동시에 고치면 내용이 섞일 수 있어 읽기 전용으로 열었습니다.</span>
+            {detail.perms.force_unlock && (
+              <div className="banner-actions">
+                <button className="btn btn-sm" onClick={async () => {
+                  if (await dialog({ title: '편집 잠금 해제', message: `${holder?.user_name} 님의 잠금을 해제하고 편집을 시작합니다. 상대방이 입력 중이던 내용은 자동 저장분까지만 남습니다.`, confirmText: '해제 후 편집' })) {
+                    try { await api.unlock(id, true); load() } catch (e: any) { toast(e.message, 'err') }
+                  }
+                }}><Unlock size={14} /> 잠금 해제</button>
+              </div>
+            )}
+          </div>
+          <h1 className="doc-title">{detail.shown_title}</h1>
+          <div className="prose" dangerouslySetInnerHTML={{ __html: detail.content_html }} />
+        </article></div></div>
+      </>
+    )
+  }
+  if (!detail || !work) return null
+
+  return (
+    <>
+      <PageHeader crumbs={crumbs} actions={<>
+        <SaveIndicator status={status} savedAt={savedAt} />
+        <div className="pop-wrap">
+          <button className="icon-btn" onClick={() => setMenu(!menu)} aria-label="더 보기"><MoreHorizontal size={18} /></button>
+          {menu && (
+            <div className="popover menu-pop right" onMouseLeave={() => setMenu(false)}>
+              {detail.perms.view_work && detail.latest_version_no && (
+                <Link to={`/m/${id}/history`} className="menu-item"><FileClock size={15} /> 이력·비교</Link>
+              )}
+              {work.base_version_no != null && (
+                <button className="menu-item danger" onClick={discard}><Trash2 size={15} /> 작성 중 내용 폐기</button>
+              )}
+            </div>
+          )}
+        </div>
+        <button className="btn hide-sm" onClick={() => navigate(`/m/${id}${detail.published ? '' : '?v=work'}`)}>닫기</button>
+        <button className="btn btn-primary" onClick={() => setShowSave(true)} disabled={status === 'lost'} title="저장 (Ctrl+S)">저장</button>
+      </>} />
+      <div className="editor-page">
+        {status === 'lost' && (
+          <div className="banner banner-red editor-banner">
+            <AlertTriangle size={16} /> <span>편집 잠금이 해제되었습니다(관리자가 해제했거나 15분 이상 응답이 없었음). 입력한 내용은 이 브라우저에 보관되어 있습니다.</span>
+            <div className="banner-actions"><button className="btn btn-sm" onClick={relock}><RotateCcw size={14} /> 다시 잠그기</button></div>
+          </div>
+        )}
+        {recovered && (
+          <div className="banner banner-navy editor-banner">
+            <RotateCcw size={16} /> <span>서버에 저장되지 않은 입력이 이 브라우저에 남아 있어 복구했습니다.</span>
+            <div className="banner-actions"><button className="btn btn-sm" onClick={() => setRecovered(false)}>확인</button></div>
+          </div>
+        )}
+        {work.source === 'draft' && !recovered && work.base_version_no != null && (
+          <div className="editor-note muted small">
+            {work.draft_user_name && work.draft_user_name !== me.name ? `${work.draft_user_name} 님이 ` : ''}{fmtDateTime(work.draft_saved_at)}에 자동 저장한 작성 중 내용을 이어서 엽니다 (마지막 버전 v{work.base_version_no}).
+          </div>
+        )}
+        {editor && (
+          <Toolbar editor={editor} onImage={() => imgInput.current?.click()} onFile={() => fileInput.current?.click()} onLink={insertLink}
+            onImport={api.mode === 'server' ? () => docxInput.current?.click() : undefined} />
+        )}
+        <div className="editor-sheet">
+          <input className="doc-title-input" value={title} onChange={(e) => onTitleChange(e.target.value)} placeholder="매뉴얼 제목" maxLength={200} aria-label="제목" />
+          <div className="editor-meta muted small">
+            {detail.manual_no} · {detail.department_name} · {work.base_version_no ? `v${work.base_version_no}에서 수정 중` : '새 매뉴얼'}
+            {detail.published && ` · 직원들은 게시 전까지 제${detail.edition}판을 봅니다`}
+          </div>
+          <EditorBody id={id} initial={work.content_json} onChange={onDocChange} onReady={setEditor} />
+        </div>
+        <input ref={imgInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden onChange={(e) => { onPickImage(e.target.files); e.target.value = '' }} />
+        <input ref={fileInput} type="file" multiple hidden onChange={(e) => { onPickFile(e.target.files); e.target.value = '' }} />
+        <input ref={docxInput} type="file" accept=".docx" hidden onChange={(e) => { onPickDocx(e.target.files); e.target.value = '' }} />
+      </div>
+      {showSave && <SaveModal detail={detail} isFirst={work.base_version_no == null} onClose={() => setShowSave(false)} onSave={doSave} />}
+    </>
+  )
+}

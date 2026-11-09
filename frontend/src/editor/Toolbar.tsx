@@ -1,0 +1,125 @@
+import { ReactNode } from 'react'
+import type { Editor } from '@tiptap/react'
+import {
+  AlertOctagon, AlertTriangle, Bold, Columns3, FileUp, ImagePlus, Indent, Info, Italic, Link2, List, ListChecks, ListOrdered,
+  Minus, Outdent, Paperclip, Quote, Redo2, Rows3, Strikethrough, Table2, TableCellsMerge, TableCellsSplit, Trash2, Underline, Undo2,
+} from 'lucide-react'
+import { cx } from '../lib/util'
+
+function TB({ on, disabled, onClick, title, children, className }: { on?: boolean; disabled?: boolean; onClick: () => void; title: string; children: ReactNode; className?: string }) {
+  return (
+    <button type="button" className={cx('tb', on && 'on', className)} disabled={disabled} title={title} aria-label={title} aria-pressed={on}
+      onMouseDown={(e) => e.preventDefault()} onClick={onClick}>
+      {children}
+    </button>
+  )
+}
+
+const Sep = () => <span className="tb-sep" />
+
+export function Toolbar({ editor, onImage, onFile, onLink, onImport }: {
+  editor: Editor; onImage: () => void; onFile: () => void; onLink: () => void; onImport?: () => void
+}) {
+  const c = () => editor.chain().focus()
+  const block = editor.isActive('heading', { level: 1 }) ? 'h1' : editor.isActive('heading', { level: 2 }) ? 'h2' : editor.isActive('heading', { level: 3 }) ? 'h3' : 'p'
+  const inList = editor.isActive('listItem') || editor.isActive('taskItem')
+  const listType = editor.isActive('taskItem') ? 'taskItem' : 'listItem'
+  const inTable = editor.isActive('table')
+  const inImage = editor.isActive('image')
+  const img = inImage ? editor.getAttributes('image') : {}
+  // 크기 버튼: 속성을 바꾸고, 크기 조절 노드 뷰가 화면을 바로 다시 그리지 않으므로 표시 크기도 직접 맞춘다
+  const setImgWidth = (w: number | null) => {
+    const pos = editor.state.selection.from
+    editor.chain().focus().updateAttributes('image', { width: w, height: null }).run()
+    const dom = editor.view.nodeDOM(pos) as HTMLElement | null
+    const el = (dom?.tagName === 'IMG' ? dom : dom?.querySelector?.('img')) as HTMLImageElement | null
+    if (el) {
+      el.style.width = w ? `${w}px` : ''
+      el.style.height = 'auto'
+    }
+  }
+  return (
+    <div className="toolbar-wrap">
+      <div className="toolbar" role="toolbar" aria-label="편집 도구">
+        <TB title="실행 취소 (Ctrl+Z)" onClick={() => c().undo().run()} disabled={!editor.can().undo()}><Undo2 size={16} /></TB>
+        <TB title="다시 실행 (Ctrl+Y)" onClick={() => c().redo().run()} disabled={!editor.can().redo()}><Redo2 size={16} /></TB>
+        <Sep />
+        <select className="tb-select" value={block} aria-label="문단 스타일"
+          onChange={(e) => {
+            const v = e.target.value
+            if (v === 'p') c().setParagraph().run()
+            else c().setHeading({ level: Number(v.slice(1)) as 1 | 2 | 3 }).run()
+          }}>
+          <option value="p">본문</option>
+          <option value="h1">제목 1</option>
+          <option value="h2">제목 2</option>
+          <option value="h3">제목 3</option>
+        </select>
+        <Sep />
+        <TB title="굵게 (Ctrl+B)" on={editor.isActive('bold')} onClick={() => c().toggleBold().run()}><Bold size={16} /></TB>
+        <TB title="기울임 (Ctrl+I)" on={editor.isActive('italic')} onClick={() => c().toggleItalic().run()}><Italic size={16} /></TB>
+        <TB title="밑줄 (Ctrl+U)" on={editor.isActive('underline')} onClick={() => c().toggleUnderline().run()}><Underline size={16} /></TB>
+        <TB title="취소선" on={editor.isActive('strike')} onClick={() => c().toggleStrike().run()}><Strikethrough size={16} /></TB>
+        <Sep />
+        <TB title="글머리 기호" on={editor.isActive('bulletList')} onClick={() => c().toggleBulletList().run()}><List size={16} /></TB>
+        <TB title="번호 매기기" on={editor.isActive('orderedList')} onClick={() => c().toggleOrderedList().run()}><ListOrdered size={16} /></TB>
+        <TB title="체크리스트" on={editor.isActive('taskList')} onClick={() => c().toggleTaskList().run()}><ListChecks size={16} /></TB>
+        <TB title="들여쓰기 (Tab)" disabled={!inList || !editor.can().sinkListItem(listType)} onClick={() => c().sinkListItem(listType).run()}><Indent size={16} /></TB>
+        <TB title="내어쓰기 (Shift+Tab)" disabled={!inList || !editor.can().liftListItem(listType)} onClick={() => c().liftListItem(listType).run()}><Outdent size={16} /></TB>
+        <Sep />
+        <TB title="표 넣기" onClick={() => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}><Table2 size={16} /></TB>
+        <TB title="이미지 넣기 (캡처 붙여넣기·끌어놓기도 됩니다)" onClick={onImage}><ImagePlus size={16} /></TB>
+        <TB title="파일 첨부" onClick={onFile}><Paperclip size={16} /></TB>
+        <TB title="링크" on={editor.isActive('link')} onClick={onLink}><Link2 size={16} /></TB>
+        <Sep />
+        <TB title="주의 박스" className="tb-callout warning" on={editor.isActive('callout', { type: 'warning' })} onClick={() => c().toggleCallout('warning').run()}>
+          <AlertTriangle size={15} /><span>주의</span></TB>
+        <TB title="중요 박스" className="tb-callout danger" on={editor.isActive('callout', { type: 'danger' })} onClick={() => c().toggleCallout('danger').run()}>
+          <AlertOctagon size={15} /><span>중요</span></TB>
+        <TB title="참고 박스" className="tb-callout info" on={editor.isActive('callout', { type: 'info' })} onClick={() => c().toggleCallout('info').run()}>
+          <Info size={15} /><span>참고</span></TB>
+        <Sep />
+        <TB title="인용" on={editor.isActive('blockquote')} onClick={() => c().toggleBlockquote().run()}><Quote size={16} /></TB>
+        <TB title="구분선" onClick={() => c().setHorizontalRule().run()}><Minus size={16} /></TB>
+        {onImport && (
+          <>
+            <Sep />
+            <TB title="DOCX 가져오기 (HWP는 한글에서 DOCX로 저장 후)" className="tb-text" onClick={onImport}><FileUp size={15} /><span>가져오기</span></TB>
+          </>
+        )}
+      </div>
+      {inImage && (
+        <div className="toolbar sub-bar" role="toolbar" aria-label="이미지 도구">
+          <span className="tb-label">이미지</span>
+          <TB title="작게 (가로 320px)" className="tb-text" on={img.width === 320} onClick={() => setImgWidth(320)}><span>작게</span></TB>
+          <TB title="중간 (가로 560px)" className="tb-text" on={img.width === 560} onClick={() => setImgWidth(560)}><span>중간</span></TB>
+          <TB title="원래 크기" className="tb-text" on={!img.width} onClick={() => setImgWidth(null)}><span>원래 크기</span></TB>
+          <Sep />
+          <label className="caption-field">
+            <span>캡션</span>
+            <input value={img.title || ''} maxLength={200} placeholder="이미지 아래에 표시할 설명"
+              onChange={(e) => editor.commands.updateAttributes('image', { title: e.target.value || null, alt: e.target.value || img.alt || null })} />
+          </label>
+        </div>
+      )}
+      {inTable && (
+        <div className="toolbar sub-bar" role="toolbar" aria-label="표 도구">
+          <span className="tb-label">표</span>
+          <TB title="위에 행 추가" className="tb-text" onClick={() => c().addRowBefore().run()}><Rows3 size={14} /><span>위 행</span></TB>
+          <TB title="아래에 행 추가" className="tb-text" onClick={() => c().addRowAfter().run()}><Rows3 size={14} /><span>아래 행</span></TB>
+          <TB title="왼쪽에 열 추가" className="tb-text" onClick={() => c().addColumnBefore().run()}><Columns3 size={14} /><span>왼쪽 열</span></TB>
+          <TB title="오른쪽에 열 추가" className="tb-text" onClick={() => c().addColumnAfter().run()}><Columns3 size={14} /><span>오른쪽 열</span></TB>
+          <Sep />
+          <TB title="행 삭제" className="tb-text" onClick={() => c().deleteRow().run()}><span>행 삭제</span></TB>
+          <TB title="열 삭제" className="tb-text" onClick={() => c().deleteColumn().run()}><span>열 삭제</span></TB>
+          <Sep />
+          <TB title="셀 병합 (여러 셀을 끌어 선택)" className="tb-text" disabled={!editor.can().mergeCells()} onClick={() => c().mergeCells().run()}><TableCellsMerge size={14} /><span>병합</span></TB>
+          <TB title="셀 나누기" className="tb-text" disabled={!editor.can().splitCell()} onClick={() => c().splitCell().run()}><TableCellsSplit size={14} /><span>나누기</span></TB>
+          <TB title="머리행 켜기/끄기" className="tb-text" onClick={() => c().toggleHeaderRow().run()}><span>머리행</span></TB>
+          <Sep />
+          <TB title="표 삭제" className="tb-text danger" onClick={() => c().deleteTable().run()}><Trash2 size={14} /><span>표 삭제</span></TB>
+        </div>
+      )}
+    </div>
+  )
+}

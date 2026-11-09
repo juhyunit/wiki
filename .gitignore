@@ -1,0 +1,17 @@
+backend/data/
+backend/.venv/
+**/__pycache__/
+.pytest_cache/
+frontend/node_modules/
+frontend/dist-demo/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example
+
+# 로컬 도구·빌드 결과
+.claude/
+demo-site/

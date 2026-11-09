@@ -1,0 +1,7 @@
+# 모두 허용 목록 라이선스(MIT/BSD/Apache-2.0/MIT-CMU) — 기획서 12장
+fastapi>=0.110        # MIT
+uvicorn>=0.29         # BSD-3
+python-multipart>=0.0.9  # Apache-2.0
+nh3>=0.2.17           # MIT
+mammoth>=1.8          # BSD-2
+Pillow>=10.3          # MIT-CMU
