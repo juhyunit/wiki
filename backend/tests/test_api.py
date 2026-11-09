@@ -55,10 +55,10 @@ def test_visibility_rules(clients):
     # 부서 한정 + 추가 열람 부서(총무부) → 열람 가능
     assert ga.get("/api/manuals/3").status_code == 200
     # 부서 한정(여신심사부) → 트리·조회·검색 모두 차단
-    assert mid(ga, "LN-0002") is None
+    assert mid(ga, "2010-0002") is None
     assert ga.get("/api/manuals/6").status_code == 403
-    assert all(r["manual_no"] != "LN-0002" for r in ga.get("/api/search", params={"q": "감정"}).json()["results"])
-    assert any(r["manual_no"] == "LN-0002" for r in clients["ln_staff"].get("/api/search", params={"q": "감정"}).json()["results"])
+    assert all(r["manual_no"] != "2010-0002" for r in ga.get("/api/search", params={"q": "감정"}).json()["results"])
+    assert any(r["manual_no"] == "2010-0002" for r in clients["ln_staff"].get("/api/search", params={"q": "감정"}).json()["results"])
 
 
 @pytest.mark.parametrize("method,path,body", [
@@ -90,7 +90,7 @@ def test_other_department_blocked(clients, method, path, body):
 
 
 def test_unpublished_changes_hidden(clients):
-    # DP-0002는 v2(비대면 처리)가 게시 전 → 다른 부서 화면·검색에 안 보인다
+    # 2020-0002(수신업무부)는 v2(비대면 처리)가 게시 전 → 다른 부서 화면·검색에 안 보인다
     ga, dp = clients["ga_staff"], clients["dp_staff"]
     assert "비대면" not in ga.get("/api/manuals/8").json()["content_html"]
     assert ga.get("/api/search", params={"q": "비대면"}).json()["total"] == 0
@@ -206,7 +206,7 @@ def test_attachment_permissions(clients):
 
 def test_hr_sync_mass_deactivation_guard(clients):
     ad = clients["admin"]
-    csv = "employee_no,name,department_code,position\nE1001,김지현,HR,과장\n"
+    csv = "employee_no,name,department_code,position\nE1001,김지현,1010,과장\n"
     r = ad.post("/api/admin/hr-sync", files={"file": ("hr.csv", csv.encode(), "text/csv")}, data={"mode": "apply"}, headers=H)
     assert r.status_code == 409  # 대부분 비활성화 → 중단
     users = ad.get("/api/admin/users").json()
@@ -217,7 +217,7 @@ def test_search_korean_partial(clients):
     r = clients["ga_staff"].get("/api/search", params={"q": "결재"}).json()
     assert r["total"] >= 1 and "<mark>" in r["results"][0]["snippet_html"]
     r2 = clients["ga_staff"].get("/api/search", params={"q": "법인"}).json()
-    assert r2["results"][0]["manual_no"] == "GA-0001"  # 제목 일치 우선
+    assert r2["results"][0]["manual_no"] == "1020-0001"  # 제목 일치 우선
 
 
 def test_unpublished_attachment_hidden_from_other_departments(clients):
@@ -256,9 +256,72 @@ def test_stale_approval_reminder():
 def test_move_manuals_between_departments(clients):
     ad = clients["admin"]
     depts = {d["code"]: d["id"] for d in ad.get("/api/admin/departments").json()}
-    assert clients["ga_staff"].post(f"/api/admin/departments/{depts['GA']}/move-manuals", json={"target_id": depts["SEC"]}, headers=H).status_code == 403
-    r = ad.post(f"/api/admin/departments/{depts['GA']}/move-manuals", json={"target_id": depts["SEC"]}, headers=H)
+    assert clients["ga_staff"].post(f"/api/admin/departments/{depts['1020']}/move-manuals", json={"target_id": depts["3010"]}, headers=H).status_code == 403
+    r = ad.post(f"/api/admin/departments/{depts['1020']}/move-manuals", json={"target_id": depts["3010"]}, headers=H)
     assert r.status_code == 200 and r.json()["moved"] == 2
-    page = ad.get(f"/api/departments/{depts['SEC']}").json()
-    assert any(m["manual_no"] == "GA-0001" for m in page["manuals"])
+    page = ad.get(f"/api/departments/{depts['3010']}").json()
+    assert any(m["manual_no"] == "1020-0001" for m in page["manuals"])
     assert any(c["name"] == "경비·법인카드" for c in page["categories"])
+
+
+def test_text_style_renders_only_allowed_values(clients):
+    """글자색·글꼴·글자 크기는 허용 목록 값만 화면에 그린다(그 밖의 CSS는 버림)."""
+    hs = clients["hr_staff"]
+    m = hs.post("/api/manuals", json={"title": "서식 테스트", "visibility": "department"}, headers=H).json()["id"]
+    hs.post(f"/api/manuals/{m}/lock", headers=H)
+    doc = {"type": "doc", "content": [{"type": "paragraph", "content": [
+        {"type": "text", "text": "허용", "marks": [{"type": "textStyle", "attrs": {
+            "color": "#C0392B", "fontSize": "18px", "fontFamily": "Batang, AppleMyungjo, serif"}}]},
+        {"type": "text", "text": "차단", "marks": [{"type": "textStyle", "attrs": {
+            "color": "red;background:url(javascript:alert(1))", "fontSize": "999px", "fontFamily": "x;position:fixed"}}]},
+    ]}]}
+    r = hs.post(f"/api/manuals/{m}/versions", json={"title": "서식 테스트", "content_json": doc, "change_type": "최초 작성"}, headers=H)
+    assert r.status_code == 200
+    html = hs.get(f"/api/manuals/{m}", params={"view": "work"}).json()["content_html"]
+    assert '<span style="color:#c0392b;font-family:Batang, AppleMyungjo, serif;font-size:18px">허용</span>' in html
+    assert "javascript" not in html and "position" not in html and "999px" not in html
+    assert "<p>" in html and "차단" in html  # 글자는 남고 서식만 버린다
+
+
+def test_department_code_is_4_digits(clients):
+    ad = clients["admin"]
+    assert clients["hr_lead"].post("/api/admin/departments", json={"code": "3020", "name": "IT기획부"}, headers=H).status_code == 403
+    for bad in ("IT", "302", "30201", "0302", "３０２０", "1０２０"):
+        r = ad.post("/api/admin/departments", json={"code": bad, "name": "IT기획부"}, headers=H)
+        assert r.status_code == 422 and "4자리" in r.json()["detail"], bad
+    assert ad.post("/api/admin/departments", json={"code": "3020", "name": "IT기획부"}, headers=H).status_code == 200
+    assert ad.post("/api/admin/departments", json={"code": "3020", "name": "다른부"}, headers=H).status_code == 409
+    d = next(x for x in ad.get("/api/admin/departments").json() if x["code"] == "3020")
+    assert d["name"] == "IT기획부"
+
+
+def test_department_rename(clients):
+    ad = clients["admin"]
+    depts = {d["code"]: d for d in ad.get("/api/admin/departments").json()}
+    if "3020" not in depts:
+        ad.post("/api/admin/departments", json={"code": "3020", "name": "IT기획부"}, headers=H)
+        depts = {d["code"]: d for d in ad.get("/api/admin/departments").json()}
+    did = depts["3020"]["id"]
+    assert clients["hr_lead"].patch(f"/api/admin/departments/{did}", json={"name": "디지털기획부"}, headers=H).status_code == 403
+    assert ad.patch(f"/api/admin/departments/{did}", json={"name": "  "}, headers=H).status_code == 422
+    assert ad.patch(f"/api/admin/departments/{did}", json={"name": "인사부"}, headers=H).status_code == 409
+    assert ad.patch(f"/api/admin/departments/{did}", json={"name": " 디지털기획부 "}, headers=H).status_code == 200
+    assert any(d["id"] == did and d["name"] == "디지털기획부" and d["code"] == "3020" for d in ad.get("/api/departments").json())
+    log = ad.get("/api/admin/audit", params={"action": "dept.update"}).json()["items"][0]
+    assert log["detail"]["from_name"] == "IT기획부" and log["detail"]["name"] == "디지털기획부"
+
+
+def test_legacy_department_codes_migrated(tmp_path):
+    """영문 부서 코드로 만든 예전 DB는 4자리 숫자 코드로 바뀌고, 문서 번호 앞자리도 함께 바뀐다."""
+    import sqlite3
+    from app.db import SCHEMA, migrate
+    conn = sqlite3.connect(tmp_path / "old.db")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(SCHEMA)
+    conn.execute("INSERT INTO departments(id, code, name) VALUES (1,'HR','인사부'), (2,'IT','IT부'), (3,'2010','여신심사부')")
+    conn.execute("INSERT INTO manuals(manual_no, title, department_id) VALUES ('HR-0001','a',1), ('IT-0003','b',2), ('2010-0001','c',3)")
+    migrate(conn)
+    codes = {r["name"]: r["code"] for r in conn.execute("SELECT name, code FROM departments")}
+    assert codes == {"인사부": "1010", "IT부": "9001", "여신심사부": "2010"}
+    nos = sorted(r[0] for r in conn.execute("SELECT manual_no FROM manuals"))
+    assert nos == ["1010-0001", "2010-0001", "9001-0003"]

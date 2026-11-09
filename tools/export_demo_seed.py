@@ -23,5 +23,6 @@ for t in tables:
         r.pop("content_text", None)
     out[t] = rows
 dest = os.path.join(os.path.dirname(__file__), "..", "frontend", "src", "api", "demo-seed.json")
-json.dump(out, open(dest, "w"), ensure_ascii=False, separators=(",", ":"))
+with open(dest, "w", encoding="utf-8") as f:
+    json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
 print("wrote", dest, os.path.getsize(dest), "bytes")

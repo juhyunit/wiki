@@ -13,6 +13,34 @@ from dataclasses import dataclass, field
 ALLOWED_CALLOUTS = {"warning": "주의", "danger": "중요", "info": "참고"}
 FILE_URL_RE = re.compile(r"^/api/files/\d+$")
 
+# 글자 서식(편집기 textStyle 마크): 허용 목록 밖 값은 버린다. frontend/src/editor/textStyle.ts와 같게 유지
+COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+FONT_FAMILIES = {
+    "Malgun Gothic, Apple SD Gothic Neo, sans-serif",
+    "Dotum, Apple SD Gothic Neo, sans-serif",
+    "Gulim, sans-serif",
+    "Batang, AppleMyungjo, serif",
+    "Gungsuh, serif",
+    "Consolas, D2Coding, monospace",
+}
+FONT_SIZES = {"12px", "13px", "14px", "15px", "16px", "18px", "20px", "24px", "28px", "32px"}
+
+
+def text_style_css(attrs) -> str:
+    if not isinstance(attrs, dict):
+        return ""
+    out = []
+    c = attrs.get("color")
+    if isinstance(c, str) and COLOR_RE.match(c):
+        out.append(f"color:{c.lower()}")
+    f = attrs.get("fontFamily")
+    if isinstance(f, str) and f in FONT_FAMILIES:
+        out.append(f"font-family:{f}")
+    s = attrs.get("fontSize")
+    if isinstance(s, str) and s in FONT_SIZES:
+        out.append(f"font-size:{s}")
+    return ";".join(out)
+
 
 def esc(s: str) -> str:
     return html.escape(s or "", quote=True)
@@ -61,6 +89,10 @@ def _marks(text: str, marks: list | None) -> str:
             out = f"<s>{out}</s>"
         elif t == "code":
             out = f"<code>{out}</code>"
+        elif t == "textStyle":
+            css = text_style_css(m.get("attrs"))
+            if css:
+                out = f'<span style="{esc(css)}">{out}</span>'
         elif t == "link":
             link = safe_href((m.get("attrs") or {}).get("href"))
     if link:

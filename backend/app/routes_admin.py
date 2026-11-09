@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -239,8 +240,11 @@ def reset_password(user_id: int, request: Request, u: User = Depends(current_use
 
 
 # ------------------------------------------------------------------ 부서·부서 관리자(시스템 관리자)
+DEPT_CODE_RE = re.compile(r"[1-9][0-9]{3}")  # 부서 코드: 4자리 숫자(1000~9999, ASCII만), 문서 번호 앞자리로 쓴다
+
+
 class DeptIn(BaseModel):
-    code: str = Field(min_length=1, max_length=10, pattern=r"^[A-Z0-9]+$")
+    code: str = Field(min_length=1, max_length=10)
     name: str = Field(min_length=1, max_length=50)
     approval_mode: str = "required"
 
@@ -254,12 +258,19 @@ class DeptPatch(BaseModel):
 @router.post("/departments")
 def create_dept(body: DeptIn, request: Request, u: User = Depends(current_user), conn=Depends(get_conn)):
     require(conn, u, "admin")
+    code, name = body.code.strip(), body.name.strip()
+    if not DEPT_CODE_RE.fullmatch(code):
+        raise HTTPException(422, "부서 코드는 4자리 숫자입니다(1000~9999).")
+    if not name:
+        raise HTTPException(422, "부서 이름을 입력하세요.")
     if body.approval_mode not in ("required", "skip"):
         raise HTTPException(422, "승인 설정이 올바르지 않습니다.")
-    if conn.execute("SELECT 1 FROM departments WHERE code=?", (body.code,)).fetchone():
+    if conn.execute("SELECT 1 FROM departments WHERE code=?", (code,)).fetchone():
         raise HTTPException(409, "같은 부서 코드가 있습니다.")
+    if conn.execute("SELECT 1 FROM departments WHERE name=?", (name,)).fetchone():
+        raise HTTPException(409, "같은 이름의 부서가 있습니다.")
     so = conn.execute("SELECT COALESCE(MAX(sort_order),0)+1 FROM departments").fetchone()[0]
-    cur = conn.execute("INSERT INTO departments(code, name, approval_mode, sort_order) VALUES (?,?,?,?)", (body.code, body.name, body.approval_mode, so))
+    cur = conn.execute("INSERT INTO departments(code, name, approval_mode, sort_order) VALUES (?,?,?,?)", (code, name, body.approval_mode, so))
     S.audit(conn, u, "dept.create", "department", cur.lastrowid, cur.lastrowid, body.model_dump(), client_ip(request))
     return {"id": cur.lastrowid}
 
@@ -273,8 +284,15 @@ def patch_dept(dept_id: int, body: DeptPatch, request: Request, u: User = Depend
     data = body.model_dump(exclude_unset=True)
     if "approval_mode" in data and data["approval_mode"] not in ("required", "skip"):
         raise HTTPException(422, "승인 설정이 올바르지 않습니다.")
-    if "name" in data and data["name"]:
-        conn.execute("UPDATE departments SET name=? WHERE id=?", (data["name"], dept_id))
+    if "name" in data and data["name"] is not None:
+        name = data["name"].strip()
+        if not name:
+            raise HTTPException(422, "부서 이름을 입력하세요.")
+        if conn.execute("SELECT 1 FROM departments WHERE name=? AND id!=?", (name, dept_id)).fetchone():
+            raise HTTPException(409, "같은 이름의 부서가 있습니다.")
+        data["name"] = name
+        data["from_name"] = d["name"]  # 감사 로그에 바뀌기 전 이름도 남긴다
+        conn.execute("UPDATE departments SET name=? WHERE id=?", (name, dept_id))
     if "approval_mode" in data and data["approval_mode"]:
         conn.execute("UPDATE departments SET approval_mode=? WHERE id=?", (data["approval_mode"], dept_id))
     if "is_active" in data and data["is_active"] is not None:

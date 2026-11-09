@@ -14,6 +14,8 @@
 - 게시된 버전·감사 로그는 수정·삭제하지 않음(DB 트리거 유지)
 - 인사 동기화는 삭제 없이 비활성화만, 5% 초과 비활성화는 중단
 - 데모 어댑터(frontend/src/api/demo.ts)는 서버 규칙과 같게 유지
+- 글자 서식(색·글꼴·크기) 허용 목록은 backend/app/render.py와 frontend/src/editor/textStyle.ts를 함께 고친다
+- 부서 코드는 4자리 숫자(1000~9999), 문서 번호는 "부서코드-일련번호"
 ## 디자인
 - 색은 frontend/src/styles.css의 토큰만 쓴다: Primary #263B63(주요 버튼·선택 메뉴·제목), Primary Light #E9EFF8, Accent #D97736(즐겨찾기·중요·선택적 강조만), Background #F7F8FA, Surface #FFF, Border #E1E5EB, Text #202B3C, Muted #758196
 - 그라데이션 배경·글래스모피즘·장식용 아이콘·배지·과한 그림자 금지, 모서리 4px

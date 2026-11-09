@@ -1,10 +1,11 @@
-import { ReactNode } from 'react'
+import { ReactNode, useEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import {
-  AlertOctagon, AlertTriangle, Bold, Columns3, FileUp, ImagePlus, Indent, Info, Italic, Link2, List, ListChecks, ListOrdered,
+  AlertOctagon, AlertTriangle, Baseline, Bold, Columns3, FileUp, ImagePlus, Indent, Info, Italic, Link2, List, ListChecks, ListOrdered,
   Minus, Outdent, Paperclip, Quote, Redo2, Rows3, Strikethrough, Table2, TableCellsMerge, TableCellsSplit, Trash2, Underline, Undo2,
 } from 'lucide-react'
 import { cx } from '../lib/util'
+import { FONT_FAMILIES, FONT_SIZES, TEXT_COLORS } from './textStyle'
 
 function TB({ on, disabled, onClick, title, children, className }: { on?: boolean; disabled?: boolean; onClick: () => void; title: string; children: ReactNode; className?: string }) {
   return (
@@ -17,6 +18,40 @@ function TB({ on, disabled, onClick, title, children, className }: { on?: boolea
 
 const Sep = () => <span className="tb-sep" />
 
+function ColorPicker({ editor }: { editor: Editor }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const h = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false)
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+  const cur = editor.getAttributes('textStyle').color as string | undefined
+  const pick = (v: string | null) => {
+    const ch = editor.chain().focus()
+    ;(v ? ch.setColor(v) : ch.unsetColor()).run()
+    setOpen(false)
+  }
+  return (
+    <div className="pop-wrap" ref={ref}>
+      <button type="button" className={cx('tb tb-color', (open || !!cur) && 'on')} title="글자색" aria-label="글자색" aria-expanded={open}
+        onMouseDown={(e) => e.preventDefault()} onClick={() => setOpen(!open)}>
+        <Baseline size={16} /><span className="tb-color-bar" style={{ background: cur || 'var(--t1)' }} />
+      </button>
+      {open && (
+        <div className="popover color-pop" role="menu" aria-label="글자색">
+          <button type="button" className="color-default" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(null)}>기본색</button>
+          {TEXT_COLORS.map((c) => (
+            <button key={c.value} type="button" className={cx('color-swatch', cur === c.value && 'on')} style={{ background: c.value }}
+              title={c.label} aria-label={c.label} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(c.value)} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function Toolbar({ editor, onImage, onFile, onLink, onImport }: {
   editor: Editor; onImage: () => void; onFile: () => void; onLink: () => void; onImport?: () => void
 }) {
@@ -27,6 +62,7 @@ export function Toolbar({ editor, onImage, onFile, onLink, onImport }: {
   const inTable = editor.isActive('table')
   const inImage = editor.isActive('image')
   const img = inImage ? editor.getAttributes('image') : {}
+  const ts = editor.getAttributes('textStyle') as { fontFamily?: string; fontSize?: string }
   // 크기 버튼: 속성을 바꾸고, 크기 조절 노드 뷰가 화면을 바로 다시 그리지 않으므로 표시 크기도 직접 맞춘다
   const setImgWidth = (w: number | null) => {
     const pos = editor.state.selection.from
@@ -60,6 +96,17 @@ export function Toolbar({ editor, onImage, onFile, onLink, onImport }: {
         <TB title="기울임 (Ctrl+I)" on={editor.isActive('italic')} onClick={() => c().toggleItalic().run()}><Italic size={16} /></TB>
         <TB title="밑줄 (Ctrl+U)" on={editor.isActive('underline')} onClick={() => c().toggleUnderline().run()}><Underline size={16} /></TB>
         <TB title="취소선" on={editor.isActive('strike')} onClick={() => c().toggleStrike().run()}><Strikethrough size={16} /></TB>
+        <ColorPicker editor={editor} />
+        <select className="tb-select tb-font" value={ts.fontFamily || ''} aria-label="글꼴" title="글꼴"
+          onChange={(e) => (e.target.value ? c().setFontFamily(e.target.value) : c().unsetFontFamily()).run()}>
+          <option value="">기본 글꼴</option>
+          {FONT_FAMILIES.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+        </select>
+        <select className="tb-select tb-size" value={ts.fontSize || ''} aria-label="글자 크기" title="글자 크기"
+          onChange={(e) => (e.target.value ? c().setFontSize(e.target.value) : c().unsetFontSize()).run()}>
+          <option value="">기본 크기</option>
+          {FONT_SIZES.map((s) => <option key={s} value={s}>{parseInt(s)}</option>)}
+        </select>
         <Sep />
         <TB title="글머리 기호" on={editor.isActive('bulletList')} onClick={() => c().toggleBulletList().run()}><List size={16} /></TB>
         <TB title="번호 매기기" on={editor.isActive('orderedList')} onClick={() => c().toggleOrderedList().run()}><ListOrdered size={16} /></TB>

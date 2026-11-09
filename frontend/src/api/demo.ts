@@ -6,9 +6,11 @@ import type * as T from './types'
 import seedJson from './demo-seed.json'
 const seedData: any = seedJson
 import { buildExtensions } from '../editor/extensions'
+import { cssColorToHex, safeTextStyleCss } from '../editor/textStyle'
 import { nowStr, storage } from '../lib/util'
 
-const KEY = 'ww-demo-v1'
+// v2: 부서 코드 4자리 숫자 체계로 바뀐 예시 데이터(예전 브라우저 데이터는 새 예시로 다시 시작)
+const KEY = 'ww-demo-v2'
 const USER_KEY = 'ww-demo-user'
 type Row = Record<string, any>
 type DB = Record<string, Row[]> & { exported_at: string; seq: Record<string, number> }
@@ -201,6 +203,14 @@ function postProcess(html: string): { html: string; toc: T.TocItem[] } {
     else if (/^https?:/i.test(href)) a.setAttribute('target', '_blank')
   })
   box.querySelectorAll('script,iframe,object,embed').forEach((x) => x.remove())
+  // 글자 서식: 서버(render.py text_style_css)와 같은 허용 목록 값만 남긴다
+  box.querySelectorAll('span[style]').forEach((el) => {
+    const st = el.getAttribute('style') || ''
+    const get = (p: string) => st.match(new RegExp(`(?:^|;)\\s*${p}\\s*:\\s*([^;]+)`, 'i'))?.[1]?.trim()
+    const css = safeTextStyleCss({ color: cssColorToHex(get('color')), fontFamily: get('font-family'), fontSize: get('font-size') })
+    if (css) el.setAttribute('style', css)
+    else el.removeAttribute('style')
+  })
   return { html: box.innerHTML, toc }
 }
 
@@ -1021,18 +1031,33 @@ export async function createDemoApi(): Promise<Api> {
     createDept: (body) => W(() => {
       const u = cur()
       require_(can(u, 'admin'))
-      if (!/^[A-Z0-9]+$/.test(body.code)) fail(422, '부서 코드는 영문 대문자·숫자만 씁니다.')
-      if (T_('departments').some((d) => d.code === body.code)) fail(409, '같은 부서 코드가 있습니다.')
+      const code = (body.code || '').trim(), name = (body.name || '').trim()
+      if (!/^[1-9][0-9]{3}$/.test(code)) fail(422, '부서 코드는 4자리 숫자입니다(1000~9999).')
+      if (!name) fail(422, '부서 이름을 입력하세요.')
+      if (T_('departments').some((d) => d.code === code)) fail(409, '같은 부서 코드가 있습니다.')
+      if (T_('departments').some((d) => d.name === name)) fail(409, '같은 이름의 부서가 있습니다.')
       const id = nextId('departments')
-      T_('departments').push({ id, code: body.code, name: body.name, approval_mode: 'required', is_active: 1, sort_order: Math.max(0, ...T_('departments').map((d) => d.sort_order)) + 1 })
-      audit(u, 'dept.create', 'department', id, id, body)
+      T_('departments').push({ id, code, name, approval_mode: 'required', is_active: 1, sort_order: Math.max(0, ...T_('departments').map((d) => d.sort_order)) + 1 })
+      audit(u, 'dept.create', 'department', id, id, { code, name, approval_mode: 'required' })
     }),
     patchDept: (id, body) => W(() => {
       const u = cur()
       require_(can(u, 'admin'))
       const d = dept(id) || fail(404, '부서를 찾을 수 없습니다.')
-      Object.assign(d, body)
-      audit(u, 'dept.update', 'department', id, id, body)
+      const data: Record<string, any> = {}
+      if (body.approval_mode !== undefined) {
+        if (!['required', 'skip'].includes(body.approval_mode)) fail(422, '승인 설정이 올바르지 않습니다.')
+        data.approval_mode = d.approval_mode = body.approval_mode
+      }
+      if (body.name !== undefined && body.name !== null) {
+        const name = String(body.name).trim()
+        if (!name) fail(422, '부서 이름을 입력하세요.')
+        if (T_('departments').some((x) => x.name === name && x.id !== id)) fail(409, '같은 이름의 부서가 있습니다.')
+        Object.assign(data, { name, from_name: d.name })
+        d.name = name
+      }
+      if (body.is_active !== undefined && body.is_active !== null) data.is_active = d.is_active = body.is_active ? 1 : 0
+      audit(u, 'dept.update', 'department', id, id, data)
     }),
     setDeptAdmin: (deptId, userId, cs) => W(() => {
       const u = cur()

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Archive, ArchiveRestore, CheckCircle2, Clock, Eye, FileClock, Info, Lock, MoreHorizontal, Paperclip, PenLine, Printer, Send,
-  Star, Trash2, Unlock, XCircle,
+  Archive, ArchiveRestore, CheckCircle2, Clock, Eye, FileClock, Info, Lock, MoreHorizontal, PanelRightClose, PanelRightOpen, Paperclip,
+  PenLine, Printer, Send, Star, Trash2, Unlock, XCircle,
 } from 'lucide-react'
 import { api } from '../api/client'
 import type { Dept, ManualDetail, TocItem } from '../api/types'
@@ -10,9 +10,10 @@ import { Link } from '../components/Link'
 import { PageHeader } from '../components/PageHeader'
 import { ErrorBox, Modal, ReviewDate, Spinner, StatusText, useDialog, useLoad, useToast } from '../components/ui'
 import { navigate } from '../lib/router'
+import { useWideView } from '../lib/wide'
 import { cx, fileSize, fmtDate, fmtDateTime, fmtTime, relTime } from '../lib/util'
 
-export function Toc({ toc, containerSelector = '.prose' }: { toc: TocItem[]; containerSelector?: string }) {
+export function Toc({ toc, containerSelector = '.prose', onHide }: { toc: TocItem[]; containerSelector?: string; onHide?: () => void }) {
   const [active, setActive] = useState<string | null>(null)
   useEffect(() => {
     const els = toc.map((t) => document.getElementById(t.id)).filter(Boolean) as HTMLElement[]
@@ -30,7 +31,10 @@ export function Toc({ toc, containerSelector = '.prose' }: { toc: TocItem[]; con
   if (!toc.length) return null
   return (
     <nav className="toc" aria-label="목차">
-      <div className="toc-title">목차</div>
+      <div className="toc-title">
+        <span>목차</span>
+        {onHide && <button type="button" className="toc-hide" onClick={onHide} title="목차 숨기고 넓게 보기" aria-label="목차 숨기기"><PanelRightClose size={14} /></button>}
+      </div>
       {toc.map((t) => (
         <a key={t.id} href={'#' + t.id} className={cx('toc-item', `lv${t.level}`, active === t.id && 'active')}
           onClick={(e) => {
@@ -214,6 +218,7 @@ export function ManualView({ id, view }: { id: number; view: 'published' | 'work
   const toast = useToast()
   const dialog = useDialog()
   const { data: m, error, loading, reload, setData } = useLoad(() => api.manual(id, view), [id, view])
+  const [wide, toggleWide] = useWideView()
 
   const act = async (fn: () => Promise<any>, msg: string, after?: () => void) => {
     try {
@@ -279,12 +284,18 @@ export function ManualView({ id, view }: { id: number; view: 'published' | 'work
           </div>
         )}
         {m.perms.view_work && <Link to={`/m/${id}/history`} className="icon-btn" title="이력·비교" aria-label="이력·비교"><FileClock size={17} /></Link>}
+        {m.toc.length > 0 && (
+          <button className={cx('icon-btn hide-md', wide && 'on')} onClick={toggleWide} aria-pressed={wide}
+            title={wide ? '목차 보이기' : '목차 숨기고 넓게 보기'} aria-label={wide ? '목차 보이기' : '목차 숨기고 넓게 보기'}>
+            {wide ? <PanelRightOpen size={17} /> : <PanelRightClose size={17} />}
+          </button>
+        )}
         <button className="icon-btn hide-sm" onClick={print} title="인쇄" aria-label="인쇄"><Printer size={17} /></button>
         {m.perms.edit && <Link to={`/m/${id}/edit`} className="btn"><PenLine size={15} /> 편집</Link>}
         <MoreMenu m={m} reload={reload} />
       </>} />
       <div className="page doc-page">
-        <div className="doc-layout">
+        <div className={cx('doc-layout', (wide || !m.toc.length) && 'wide')}>
           <article className="doc">
             {m.status === 'archived' && <div className="hint hint-gray"><Archive size={16} /><span>폐기된 매뉴얼입니다. 담당 부서만 볼 수 있습니다.</span></div>}
             {lockedByOther && m.perms.view_work && (
@@ -374,9 +385,11 @@ export function ManualView({ id, view }: { id: number; view: 'published' | 'work
             )}
             <footer className="doc-foot">최근 30일 조회 {m.views_30d}회 · 최종 수정 {fmtDateTime(m.updated_at)}</footer>
           </article>
-          <aside className="doc-aside">
-            <Toc toc={m.toc} />
-          </aside>
+          {!wide && m.toc.length > 0 && (
+            <aside className="doc-aside">
+              <Toc toc={m.toc} onHide={toggleWide} />
+            </aside>
+          )}
         </div>
       </div>
     </>

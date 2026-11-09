@@ -318,10 +318,15 @@ function DeptsTab() {
       <div className="panel-head">
         <h2>부서·부서 관리자 <span className="muted small">부서마다 정·부 2명 이상 지명을 권장합니다</span></h2>
         <button className="btn btn-sm btn-primary" onClick={async () => {
-          const code = await dialog({ title: '부서 추가', input: { label: '부서 코드 (영문 대문자·숫자, 문서 번호 앞자리)', required: true, placeholder: 'IT' } })
+          const used = new Set(data.map((d) => d.code))
+          let next = 1000
+          while (used.has(String(next)) && next < 9999) next += 10
+          const code = await dialog({ title: '부서 추가', input: { label: '부서 코드 (4자리 숫자 1000~9999, 문서 번호 앞자리로 씁니다)', required: true, placeholder: String(next) } })
           if (!code) return
+          if (!/^[1-9][0-9]{3}$/.test(code)) return toast('부서 코드는 4자리 숫자입니다(1000~9999).', 'err')
+          if (used.has(code)) return toast('같은 부서 코드가 있습니다.', 'err')
           const name = await dialog({ title: '부서 추가', input: { label: '부서 이름', required: true } })
-          if (name) run(() => api.createDept({ code: code.toUpperCase(), name }), '부서를 추가했습니다.')
+          if (name) run(() => api.createDept({ code, name }), '부서를 추가했습니다.')
         }}><Building2 size={14} /> 부서 추가</button>
       </div>
       <div className="table-wrap"><table className="table dense">
@@ -350,6 +355,10 @@ function DeptsTab() {
               {d.admins.length === 0 && <span className="text-red">미지정</span>}
             </td>
             <td className="row-actions">
+              <button className="btn btn-sm" onClick={async () => {
+                const name = await dialog({ title: '부서 이름 변경', message: `부서 코드(${d.code})·문서 번호는 그대로 두고 이름만 바꿉니다.`, input: { label: '새 부서 이름', required: true, defaultValue: d.name } })
+                if (name && name !== d.name) run(() => api.patchDept(d.id, { name }), '부서 이름을 바꿨습니다.')
+              }}>이름 변경</button>
               <button className="btn btn-sm" onClick={() => { setAssign(d); setPick(''); setSelfPub(true) }}>관리자 지명</button>
               <button className="btn btn-sm btn-ghost" onClick={() => { setMoving(d); setTarget('') }}>매뉴얼 이동</button>
             </td>
@@ -391,7 +400,7 @@ function DeptsTab() {
   )
 }
 
-const SAMPLE_CSV = 'employee_no,name,department_code,position,email,is_active\nE1001,김지현,HR,과장,hr_lead@example.com,1\nE1002,박성우,HR,대리,hr_staff@example.com,1\n'
+const SAMPLE_CSV = 'employee_no,name,department_code,position,email,is_active\nE1001,김지현,1010,과장,hr_lead@example.com,1\nE1002,박성우,1010,대리,hr_staff@example.com,1\n'
 
 function HrTab() {
   const toast = useToast()

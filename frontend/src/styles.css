@@ -421,6 +421,13 @@ kbd { font-family: var(--mono); font-size: 11px; color: var(--t3); border: 1px s
 .doc-layout { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 56px; }
 .doc-layout > .doc { width: 100%; max-width: 780px; min-width: 0; }
 .doc-aside { position: sticky; top: calc(var(--app-h) + var(--top-h) + 30px); align-self: start; max-height: calc(100vh - 150px); overflow-y: auto; }
+/* 넓게 보기: 목차를 숨기고 본문 폭을 넓힌다(보기·편집 공통, 이 브라우저에 기억) */
+.doc-layout.wide { grid-template-columns: minmax(0, 1fr); }
+.doc-layout.wide > .doc { max-width: 1080px; }
+.doc-page:has(> .doc-layout.wide) { max-width: 1240px; }
+.editor-page.wide .editor-sheet { max-width: 1160px; }
+.editor-page.wide > .banner, .editor-page.wide > .editor-note { max-width: 1080px; }
+.icon-btn.on { background: var(--primary-light); color: var(--primary); }
 .doc-head { margin: 0 0 30px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
 .doc-title { display: flex; align-items: flex-start; gap: 6px; font-size: 32px; font-weight: 700; line-height: 1.25; margin: 0 0 12px; color: var(--primary); }
 .title-star { border: none; background: transparent; color: var(--t4); padding: 4px; margin-top: 3px; border-radius: 3px; line-height: 0; }
@@ -438,7 +445,9 @@ kbd { font-family: var(--mono); font-size: 11px; color: var(--t3); border: 1px s
 .attachment svg { color: var(--t3); }
 .attachment:hover { background: var(--hover); }
 .attachment .muted { margin-left: auto; flex-shrink: 0; }
-.toc-title { font-size: 12.5px; font-weight: 600; color: var(--t3); margin: 0 0 6px 10px; }
+.toc-title { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; font-weight: 600; color: var(--t3); margin: 0 0 6px 10px; }
+.toc-hide { display: grid; place-items: center; width: 22px; height: 22px; border: none; border-radius: 3px; background: transparent; color: var(--t4); padding: 0; }
+.toc-hide:hover { background: var(--hover); color: var(--t1); }
 .toc-item { display: block; font-size: 13px; color: var(--t3); padding: 3px 8px 3px 10px; border-left: 1px solid var(--line); line-height: 1.45; text-decoration: none !important; }
 .toc-item:hover { color: var(--t1); }
 .toc-item.lv3 { padding-left: 22px; }
@@ -533,6 +542,15 @@ kbd { font-family: var(--mono); font-size: 11px; color: var(--t3); border: 1px s
 .tb-sep { width: 1px; height: 18px; background: var(--input-line); margin: 0 5px; flex-shrink: 0; }
 .tb-select { height: 28px; border: 1px solid var(--input-line); border-radius: 3px; padding: 0 4px; font-size: 13px; background: var(--surface); flex-shrink: 0; color: var(--t2); }
 .tb-label { font-size: 12.5px; font-weight: 600; color: var(--t3); padding: 0 6px 0 2px; }
+.tb-font { width: 92px; margin-left: 4px; }
+.tb-size { width: 86px; margin-left: 4px; }
+.tb.tb-color { flex-direction: column; gap: 1px; padding: 3px 6px 2px; }
+.tb-color-bar { width: 14px; height: 3px; border-radius: 1px; }
+.color-pop { top: 32px; left: 0; min-width: 0; display: grid; grid-template-columns: repeat(4, 24px); gap: 6px; padding: 8px; }
+.color-default { grid-column: 1 / -1; height: 26px; border: 1px solid var(--input-line); border-radius: var(--r); background: var(--surface); font-size: 12.5px; color: var(--t1); }
+.color-default:hover { background: var(--hover); }
+.color-swatch { width: 24px; height: 24px; padding: 0; border: 1px solid rgba(32, 43, 60, 0.12); border-radius: 3px; }
+.color-swatch:hover, .color-swatch.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--primary); }
 .caption-field { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--t3); }
 .caption-field input { height: 28px; width: 260px; border: 1px solid var(--input-line); border-radius: 3px; padding: 0 7px; font-size: 13px; }
 .editor-sheet { max-width: 860px; padding: 30px 40px 140px; }
@@ -693,6 +711,7 @@ mark { background: #fbe2cf; color: inherit; padding: 0 1px; }
   .doc-title, .doc-title-input { font-size: 24px; }
   .prose { font-size: 15.5px; }
   .toolbar, .sub-bar { flex-wrap: nowrap; overflow-x: auto; padding: 3px 8px; }
+  .color-pop { position: fixed; top: calc(var(--app-h) + var(--top-h) + 40px); left: 10px; }
   .caption-field input { width: 170px; }
   .editor-sheet { padding: 18px 16px 120px; }
   .editor-page > .banner, .editor-page > .editor-note { margin-left: 10px; margin-right: 10px; }

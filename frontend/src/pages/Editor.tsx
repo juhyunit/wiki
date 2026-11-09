@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import type { Editor as TEditor } from '@tiptap/react'
-import { AlertTriangle, CheckCircle2, CloudOff, FileClock, Loader2, Lock, MoreHorizontal, RotateCcw, Save, Trash2, Unlock, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, CloudOff, FileClock, FoldHorizontal, Loader2, Lock, MoreHorizontal, RotateCcw, Save, Trash2, UnfoldHorizontal, Unlock, X } from 'lucide-react'
 import { api, ApiError } from '../api/client'
 import type { Doc, ManualDetail, WorkContent } from '../api/types'
 import { useApp } from '../app-context'
 import { Link } from '../components/Link'
 import { PageHeader } from '../components/PageHeader'
 import { ErrorBox, Modal, Spinner, useDialog, useToast } from '../components/ui'
-import { buildExtensions, cleanPastedHTML } from '../editor/extensions'
+import { buildExtensions, cleanPastedHTML, extractRtfImages } from '../editor/extensions'
 import { Toolbar } from '../editor/Toolbar'
 import { navigate } from '../lib/router'
+import { useWideView } from '../lib/wide'
 import { CHANGE_TYPES, cx, fmtDateTime, fmtTime, storage } from '../lib/util'
 
 type SaveStatus = 'saved' | 'dirty' | 'saving' | 'offline' | 'lost'
@@ -25,6 +26,22 @@ function readBackup(id: number): Backup | null {
   } catch {
     return null
   }
+}
+
+const pastedImageFiles = (cd: DataTransfer | null) => Array.from(cd?.files || []).filter((f) => f.type.startsWith('image/'))
+// 캡처 이미지(그림만) 또는 웹·Word에서 그림 하나만 복사한 경우: 글자가 없고 그림 파일이 있다
+const isImageOnlyPaste = (cd: DataTransfer | null) =>
+  pastedImageFiles(cd).length > 0 && (cd?.getData('text/html') || '').replace(/<[^>]*>/g, '').replace(/&nbsp;|\s/g, '').length === 0
+
+// data URI 그림을 파일로 바꾼다(CSP상 fetch(data:)는 막혀 있어 직접 디코딩)
+function dataUrlToFile(src: string, n: number): File | null {
+  const m = src.match(/^data:(image\/(png|jpe?g|gif|webp));base64,(.+)$/i)
+  if (!m) return null
+  const bin = atob(m[3])
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  const ext = m[2].toLowerCase() === 'jpeg' ? 'jpg' : m[2].toLowerCase()
+  return new File([bytes], `붙여넣은-그림-${n}.${ext}`, { type: m[1].toLowerCase() })
 }
 
 function insertImageNode(ed: TEditor, node: any, pos?: number) {
@@ -116,6 +133,41 @@ function EditorBody({ id, initial, onChange, onReady, readOnly }: {
 }) {
   const toast = useToast()
   const editorRef = useRef<TEditor | null>(null)
+  const pasteInfo = useRef<{ rtf: string[]; imageOnly: boolean }>({ rtf: [], imageOnly: false })
+  const inlineDone = useRef(new Set<string>())
+  const inlineBusy = useRef(new Set<string>())
+  // 붙여넣기로 들어온 data URI 그림을 첨부로 올리고 주소를 바꾼다(본문이 커지지 않게, 서버와 같은 크기 줄이기·형식 검사 적용)
+  const uploadInlineImages = useCallback(async () => {
+    const ed = editorRef.current
+    if (!ed) return
+    const srcs = new Set<string>()
+    ed.state.doc.descendants((n) => {
+      const s = n.type.name === 'image' ? String(n.attrs.src || '') : ''
+      if (s.startsWith('data:image/') && !inlineDone.current.has(s) && !inlineBusy.current.has(s)) srcs.add(s)
+    })
+    let k = 0
+    for (const src of srcs) {
+      const file = dataUrlToFile(src, ++k)
+      if (!file) { inlineDone.current.add(src); continue }
+      inlineBusy.current.add(src)
+      try {
+        const a = await api.upload(id, file)
+        inlineDone.current.add(a.url)
+        const cur = editorRef.current
+        if (!cur) return
+        const tr = cur.state.tr
+        cur.state.doc.descendants((node, pos) => {
+          if (node.type.name === 'image' && node.attrs.src === src) tr.setNodeMarkup(pos, undefined, { ...node.attrs, src: a.url })
+        })
+        if (tr.docChanged) cur.view.dispatch(tr)
+      } catch (e: any) {
+        inlineDone.current.add(src)
+        toast(e.message, 'err')
+      } finally {
+        inlineBusy.current.delete(src)
+      }
+    }
+  }, [id])
   const uploadImages = useCallback(async (files: File[], pos?: number) => {
     for (const f of files) {
       try {
@@ -135,13 +187,27 @@ function EditorBody({ id, initial, onChange, onReady, readOnly }: {
     shouldRerenderOnTransaction: true,
     editorProps: {
       attributes: { class: 'prose editor-prose', spellcheck: 'false' },
-      transformPastedHTML: cleanPastedHTML,
+      transformPastedHTML: (html) => {
+        const { rtf, imageOnly } = pasteInfo.current
+        pasteInfo.current = { rtf: [], imageOnly: false }
+        return cleanPastedHTML(html, { rtfImages: rtf, quiet: imageOnly })
+      },
+      handleDOMEvents: {
+        // 편집기가 붙여넣기를 처리하기 전에 Word RTF의 그림을 꺼내 두고, 처리 뒤에 data URI 그림을 첨부로 올린다
+        paste: (_view, event) => {
+          const cd = (event as ClipboardEvent).clipboardData
+          const html = cd?.getData('text/html') || ''
+          const rtf = /<img[^>]+src=["']?file:/i.test(html) ? cd?.getData('text/rtf') || '' : ''
+          pasteInfo.current = { rtf: rtf ? extractRtfImages(rtf) : [], imageOnly: isImageOnlyPaste(cd) }
+          window.setTimeout(uploadInlineImages, 0)
+          return false
+        },
+      },
       handlePaste: (_view, event) => {
-        const files = Array.from(event.clipboardData?.files || []).filter((f) => f.type.startsWith('image/'))
-        const html = event.clipboardData?.getData('text/html')
-        if (files.length && !html) {
+        // 그림만 붙여넣은 경우: HTML(외부 주소 그림) 대신 그림 파일을 올린다
+        if (isImageOnlyPaste(event.clipboardData)) {
           event.preventDefault()
-          uploadImages(files)
+          uploadImages(pastedImageFiles(event.clipboardData))
           return true
         }
         return false
@@ -172,6 +238,7 @@ export function EditorPage({ id }: { id: number }) {
   const { me, tree, reloadTree, refreshMe } = useApp()
   const toast = useToast()
   const dialog = useDialog()
+  const [wide, toggleWide] = useWideView()
   const [phase, setPhase] = useState<'loading' | 'locked' | 'ready' | 'error'>('loading')
   const [error, setError] = useState('')
   const [detail, setDetail] = useState<ManualDetail | null>(null)
@@ -492,6 +559,10 @@ export function EditorPage({ id }: { id: number }) {
     <>
       <PageHeader crumbs={crumbs} actions={<>
         <SaveIndicator status={status} savedAt={savedAt} />
+        <button className={cx('icon-btn hide-md', wide && 'on')} onClick={toggleWide} aria-pressed={wide}
+          title={wide ? '기본 폭으로 보기' : '넓게 보기'} aria-label={wide ? '기본 폭으로 보기' : '넓게 보기'}>
+          {wide ? <FoldHorizontal size={17} /> : <UnfoldHorizontal size={17} />}
+        </button>
         <div className="pop-wrap">
           <button className="icon-btn" onClick={() => setMenu(!menu)} aria-label="더 보기"><MoreHorizontal size={18} /></button>
           {menu && (
@@ -508,7 +579,7 @@ export function EditorPage({ id }: { id: number }) {
         <button className="btn hide-sm" onClick={() => navigate(`/m/${id}${detail.published ? '' : '?v=work'}`)}>닫기</button>
         <button className="btn btn-primary" onClick={() => setShowSave(true)} disabled={status === 'lost'} title="저장 (Ctrl+S)">저장</button>
       </>} />
-      <div className="editor-page">
+      <div className={cx('editor-page', wide && 'wide')}>
         {status === 'lost' && (
           <div className="banner banner-red editor-banner">
             <AlertTriangle size={16} /> <span>편집 잠금이 해제되었습니다(관리자가 해제했거나 15분 이상 응답이 없었음). 입력한 내용은 이 브라우저에 보관되어 있습니다.</span>

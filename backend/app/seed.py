@@ -349,15 +349,16 @@ def seed(conn):
     default_pw = os.environ.get("WORKWIKI_DEFAULT_PASSWORD", "1234")
     pw = S.hash_password(default_pw)
 
+    # 부서 코드는 4자리 숫자(1000번대 경영지원, 2000번대 영업, 3000번대 IT·보안). 아래 영문 약칭은 이 파일 안에서만 쓰는 키
     depts = [
-        ("HR", "인사부", "required"), ("LN", "여신심사부", "required"), ("DP", "수신업무부", "skip"),
-        ("SEC", "정보보호부", "required"), ("GA", "총무부", "required"),
+        ("HR", "1010", "인사부", "required"), ("LN", "2010", "여신심사부", "required"), ("DP", "2020", "수신업무부", "skip"),
+        ("SEC", "3010", "정보보호부", "required"), ("GA", "1020", "총무부", "required"),
     ]
-    dept_id = {}
-    for i, (code, name, mode) in enumerate(depts):
+    dept_id, dept_code = {}, {}
+    for i, (key, code, name, mode) in enumerate(depts):
         cur = conn.execute("INSERT INTO departments(code, name, approval_mode, sort_order) VALUES (?,?,?,?)",
                            (code, name, mode, i))
-        dept_id[code] = cur.lastrowid
+        dept_id[key], dept_code[key] = cur.lastrowid, code
 
     users = [
         # username, 사번, 이름, 직급, 부서
@@ -413,7 +414,7 @@ def seed(conn):
     def manual(d, cat, title, owner, tags, versions, visibility="company", cycle=12, extra=None,
                created_days=200, review_override=None):
         seq[d] = seq.get(d, 0) + 1
-        no = f"{d}-{seq[d]:04d}"
+        no = f"{dept_code[d]}-{seq[d]:04d}"
         cur = conn.execute(
             "INSERT INTO manuals(manual_no, title, department_id, category_id, owner_id, visibility, review_cycle_months,"
             " tags, created_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",

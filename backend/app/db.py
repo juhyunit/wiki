@@ -4,6 +4,7 @@
 운영 전환 시 PostgreSQL(asyncpg) + pg_trgm으로 교체한다.
 """
 import os
+import re
 import sqlite3
 from pathlib import Path
 
@@ -268,11 +269,30 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+LEGACY_DEPT_CODES = {"HR": "1010", "GA": "1020", "LN": "2010", "DP": "2020", "SEC": "3010"}
+
+
 def migrate(conn: sqlite3.Connection):
-    """이전 버전에서 만든 DB에 빠진 컬럼을 추가한다."""
+    """이전 버전에서 만든 DB에 빠진 컬럼을 추가하고, 영문 부서 코드를 4자리 숫자로 바꾼다."""
     cols = {r[1] for r in conn.execute("PRAGMA table_info(approvals)")}
     if "reminded_at" not in cols:
         conn.execute("ALTER TABLE approvals ADD COLUMN reminded_at TEXT")
+    used = {r["code"] for r in conn.execute("SELECT code FROM departments")}
+    nxt = 9001
+    for d in conn.execute("SELECT id, code FROM departments ORDER BY id").fetchall():
+        old = d["code"]
+        if re.fullmatch(r"[1-9][0-9]{3}", old):
+            continue
+        new = LEGACY_DEPT_CODES.get(old)
+        if not new or new in used:
+            while str(nxt) in used:
+                nxt += 1
+            new = str(nxt)
+        used.add(new)
+        conn.execute("UPDATE departments SET code=? WHERE id=?", (new, d["id"]))
+        # 문서 번호 앞자리(부서 코드)도 함께 바꾼다
+        conn.execute("UPDATE manuals SET manual_no = ? || substr(manual_no, ?) WHERE manual_no LIKE ?",
+                     (new, len(old) + 1, f"{old}-%"))
     conn.commit()
 
 
