@@ -102,7 +102,8 @@
 ### 시연용 데모(Cloudflare, GitHub 자동 배포)
 - 주소: **https://workwiki-demo.juhyunit.workers.dev**
 - 소스 저장소: https://github.com/juhyunit/wiki — `main` 브랜치에 push하면 Cloudflare **Workers Builds**가 소스에서 데모를 빌드해 자동 배포합니다(1~2분).
-- Cloudflare 쪽 설정(처음 한 번): 대시보드 › Workers & Pages › `workwiki-demo` › Settings › **Build** › Connect → GitHub `juhyunit/wiki`, 브랜치 `main`, 루트 디렉터리 `/`
+- Cloudflare 쪽 연결(2026-11-09 완료, 다시 만들 때만 필요): 대시보드 › Workers & Pages › `workwiki-demo` › Settings › **Build** › Connect → GitHub `juhyunit/wiki`, 브랜치 `main`, 루트 디렉터리 `/`
+  - 빌드 결과·로그: 같은 화면의 **Deployments** 탭(빌드 실패 시 사이트는 이전 버전 유지)
   - 빌드 명령: `npm ci --prefix frontend && npm run build:demo --prefix frontend`
   - 배포 명령: `npx wrangler deploy`
   - Node 버전은 루트의 `.node-version`(22)을 따릅니다. 배포 대상·자산 폴더는 루트의 `wrangler.jsonc`.
