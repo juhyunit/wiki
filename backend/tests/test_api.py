@@ -581,6 +581,27 @@ def test_ai_generate_answer_with_citations_and_permissions(clients, fake_model):
     assert logs and logs[0]["mode"] in ("generate", "extractive")
 
 
+def test_ai_worker_fills_embeddings_after_commit(clients, fake_model):
+    """설정을 바꾸거나 다시 만들면 뒤 작업자가 '확정된' 설정을 읽고 임베딩을 채운다(깨우는 시점 경쟁 방지)."""
+    import time
+    from app import ai
+    ad = clients["admin"]
+    ai.start_worker()
+    try:
+        # 임베딩 모델을 바꾸면 기존 임베딩은 모두 다시 만들어야 한다
+        d = ad.put("/api/admin/ai", json={"embed_model": "bge-m3:latest"}, headers=H).json()
+        assert d["progress"]["done"] == 0 and d["progress"]["total"] > 0
+        for _ in range(40):
+            p = ad.get("/api/admin/ai").json()["progress"]
+            if p["done"] == p["total"]:
+                break
+            time.sleep(0.25)
+        assert p["done"] == p["total"], p
+    finally:
+        ai.stop_worker()
+        ad.put("/api/admin/ai", json={"embed_model": "bge-m3"}, headers=H)
+
+
 def test_ai_model_pull_delete_and_off(clients, fake_model):
     import time
     ad = clients["admin"]

@@ -363,10 +363,14 @@ def wake_worker():
 def _loop():
     from .db import connect
     while not _stop.is_set():
-        _wake.wait(60)
+        woke = _wake.wait(30)
         _wake.clear()
         if _stop.is_set():
             break
+        if woke:
+            # 깨운 요청(저장·게시·설정 변경)이 DB에 확정될 때까지 잠깐 기다린 뒤 읽는다
+            time.sleep(1.5)
+            _wake.clear()
         try:
             conn = connect()
             try:

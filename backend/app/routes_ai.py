@@ -182,8 +182,9 @@ def admin_ai_save(body: AiSettingsIn, request: Request, u: User = Depends(curren
         raise HTTPException(422, str(e))
     changes = {k: {"from": before[k], "to": cfg[k]} for k in cfg if before.get(k) != cfg[k]}
     S.audit(conn, u, "ai.settings", "ai", None, None, changes, client_ip(request))
+    payload = _admin_payload(conn)  # 여기서 확정(commit)한 뒤 작업자를 깨운다
     ai.wake_worker()
-    return _admin_payload(conn)
+    return payload
 
 
 @router.post("/admin/ai/pull")
@@ -233,6 +234,6 @@ def admin_ai_reindex(body: ReindexIn, request: Request, u: User = Depends(curren
     require(conn, u, "admin", msg="색인 다시 만들기는 시스템 관리자만 할 수 있습니다.")
     S.reindex_all(conn, rechunk=body.reset)
     S.audit(conn, u, "ai.reindex", "ai", None, None, {"reset": body.reset}, client_ip(request))
-    conn.commit()
+    payload = _admin_payload(conn)
     ai.wake_worker()
-    return _admin_payload(conn)
+    return payload
