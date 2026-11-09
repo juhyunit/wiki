@@ -7,10 +7,12 @@ import seedJson from './demo-seed.json'
 const seedData: any = seedJson
 import { buildExtensions } from '../editor/extensions'
 import { cssColorToHex, safeTextStyleCss } from '../editor/textStyle'
+import { docChunks, docLinks, highlightKeys, queryTerms, rankChunks } from '../lib/knowledge'
+import { exportFilename, toDocx, toHtml, toMarkdown, type ExportMeta } from '../lib/exporters'
 import { nowStr, storage } from '../lib/util'
 
-// v2: 부서 코드 4자리 숫자 체계로 바뀐 예시 데이터(예전 브라우저 데이터는 새 예시로 다시 시작)
-const KEY = 'ww-demo-v2'
+// v3: 문서 링크·소득 확인 기준 등을 넣은 예시 데이터(예전 브라우저 데이터는 새 예시로 다시 시작)
+const KEY = 'ww-demo-v3'
 const USER_KEY = 'ww-demo-user'
 type Row = Record<string, any>
 type DB = Record<string, Row[]> & { exported_at: string; seq: Record<string, number> }
@@ -201,6 +203,7 @@ function postProcess(html: string): { html: string; toc: T.TocItem[] } {
     const href = a.getAttribute('href') || ''
     if (!/^(https?:|mailto:|#|data:)/i.test(href)) a.removeAttribute('href')
     else if (/^https?:/i.test(href)) a.setAttribute('target', '_blank')
+    else if (/^#\/m\/\d+/.test(href)) a.className = 'manual-link'
   })
   box.querySelectorAll('script,iframe,object,embed').forEach((x) => x.remove())
   // 글자 서식: 서버(render.py text_style_css)와 같은 허용 목록 값만 남긴다
@@ -477,6 +480,56 @@ function afterUserChange(before: Row, afterDept: number | null, afterActive: boo
   const reason = left ? '퇴사(비활성화)' : '전보'
   liveManuals().filter((m) => m.owner_id === before.id && m.status !== 'archived' && m.department_id === before.department_id)
     .forEach((m) => notify(deptAdminIds(m.department_id), 'owner', `담당자 재지정 필요: '${m.title}' — 담당 ${before.name} 님 ${reason}`, m.id))
+}
+
+// ------------------------------------------------------------------ AI 질의응답·링크·내보내기(서버 ai.py·routes와 같은 규칙)
+const AI_DEFAULTS: T.AiSettings = { enabled: true, provider: 'ollama', base_url: 'http://127.0.0.1:11434', chat_model: 'qwen3:4b', embed_model: 'bge-m3', top_k: 6, temperature: 0.1, timeout: 120 }
+const AI_PRESETS = {
+  chat: [
+    { name: 'qwen3:4b', size: '약 2.5GB', license: 'Apache-2.0', note: '기본 추천. 한국어 답변 품질과 CPU 속도의 균형(메모리 8GB 이상)' },
+    { name: 'qwen3:1.7b', size: '약 1.4GB', license: 'Apache-2.0', note: '저사양 PC용. 빠르지만 한국어 문장이 다소 거침' },
+    { name: 'qwen3:8b', size: '약 5.2GB', license: 'Apache-2.0', note: 'GPU 또는 메모리 16GB 이상 PC. 답변 품질 가장 좋음' },
+  ],
+  embed: [
+    { name: 'bge-m3', size: '약 1.2GB', license: 'MIT', note: '기본 추천. 한국어 검색에 널리 쓰임' },
+    { name: 'qwen3-embedding:0.6b', size: '약 0.6GB', license: 'Apache-2.0', note: '가벼운 대안' },
+  ],
+}
+const DEMO_AI_NOTE = '데모에는 AI 모델 서버가 없어 근거 문단만 보여 드립니다. PC에 설치한 버전에서 관리자가 로컬 모델을 연결하면 근거를 바탕으로 답변을 만들어 줍니다.'
+const aiSettings = (): T.AiSettings => ({ ...AI_DEFAULTS, ...(db.ai_settings as any || {}) })
+const chunkCache = new Map<number, { vid: number; chunks: ReturnType<typeof docChunks> }>()
+function chunksOf(m: Row) {
+  const vid = m.published_version_id
+  const hit = chunkCache.get(m.id)
+  if (hit && hit.vid === vid) return hit.chunks
+  const v = vid ? byId('manual_versions', vid) : null
+  const chunks = v ? docChunks(v.content_json) : []
+  chunkCache.set(m.id, { vid, chunks })
+  return chunks
+}
+function aiAdminOut(u: U): T.AiAdmin {
+  const cfg = aiSettings()
+  const total = liveManuals().reduce((s, m) => s + chunksOf(m).length, 0)
+  const logs = ((db.ai_logs as Row[]) || []).slice(-30).reverse().map((l) => ({ ...l, user_name: uname(l.user_id) })) as T.AiAdmin['logs']
+  void u
+  return {
+    settings: cfg, presets: AI_PRESETS, demo: true,
+    status: { reachable: false, version: null, models: [], error: '데모(브라우저 전용)에는 모델 서버가 없습니다.', chat_ready: false, embed_ready: false },
+    mode: cfg.enabled ? 'extractive' : 'off', notice: cfg.enabled ? DEMO_AI_NOTE : '관리자가 AI 질의응답을 꺼 두었습니다.',
+    progress: { total, done: 0, last_error: null, last_run: null }, pull: {}, logs,
+    questions_7d: ((db.ai_logs as Row[]) || []).filter((l) => l.at >= addDays(-7)).length,
+  }
+}
+function exportMeta(m: Row, v: Row | null, view: 'published' | 'work', u: U): ExportMeta {
+  const pv = m.published_version_id ? byId('manual_versions', m.published_version_id) : null
+  const c = m.category_id ? byId('categories', m.category_id) : null
+  return {
+    title: v?.title || m.title, manual_no: m.manual_no, department_name: dept(m.department_id)?.name, category_name: c?.name ?? null,
+    edition: m.edition, version_no: v?.version_no ?? null, view, published_at: pv?.published_at ?? null, published_by: pv ? uname(pv.published_by) : null,
+    owner_name: uname(m.owner_id), review_cycle_months: m.review_cycle_months, next_review_date: m.next_review_date, visibility: m.visibility,
+    extra_departments: T_('manual_extra_departments').filter((x) => x.manual_id === m.id).map((x) => dept(x.department_id)?.name).filter(Boolean),
+    tags: m.tags || [], exported_by: u.name, exported_at: nowStr().slice(0, 16),
+  }
 }
 
 // ------------------------------------------------------------------ API 구현
@@ -890,6 +943,111 @@ export async function createDemoApi(): Promise<Api> {
       return { id: aid, kind: isImg ? 'image' : 'file', name: file.name, mime: file.type, size: file.size, url }
     },
     importDocx: async () => fail(400, 'DOCX 가져오기는 PC에 설치한 버전(서버)에서 동작합니다.'),
+
+    links: (id, view = 'published') => W(() => {
+      const u = cur()
+      const m = getManual(id)
+      const canPub = can(u, 'view_published', m), canWork = can(u, 'view_work', m)
+      if (!canPub && !canWork) fail(403, '이 매뉴얼을 열람할 권한이 없습니다.')
+      const work = (view === 'work' && canWork) || !canPub
+      const linksOf = (mm: Row, w: boolean) => {
+        const vid = w ? mm.latest_version_id : mm.published_version_id
+        const v = vid ? byId('manual_versions', vid) : null
+        return v ? docLinks(v.content_json) : new Map<number, string>()
+      }
+      const brief = (r: Row) => ({ id: r.id, manual_no: r.manual_no, title: r.title, department_name: dept(r.department_id)?.name, status: r.status, edition: r.edition })
+      const outgoing: T.LinkedDoc[] = []
+      for (const [tid, text] of linksOf(m, work)) {
+        if (tid === id) continue
+        const t = byId('manuals', tid)
+        if (!t || t.deleted_at) { outgoing.push({ id: null, access: 'missing', link_text: text }); continue }
+        if (can(u, 'view_published', t) || can(u, 'view_work', t)) outgoing.push({ ...brief(t), access: 'ok', link_text: text })
+        else outgoing.push({ id: null, access: t.status === 'archived' ? 'archived' : 'denied', link_text: '' })
+      }
+      const backlinks: T.LinkedDoc[] = []
+      for (const s of liveManuals()) {
+        if (s.id === id || s.status === 'archived') continue
+        const pub = linksOf(s, false)
+        if (pub.has(id) && can(u, 'view_published', s)) { backlinks.push({ ...brief(s), scope: 'published', link_text: pub.get(id)! }); continue }
+        if (s.latest_version_id !== s.published_version_id && can(u, 'view_work', s)) {
+          const wk = linksOf(s, true)
+          if (wk.has(id)) backlinks.push({ ...brief(s), scope: 'work', link_text: wk.get(id)! })
+        }
+      }
+      return { scope: work ? 'work' : 'published', outgoing, backlinks } as T.LinksData
+    }),
+    exportManual: async (id, format, view = 'published') => {
+      const u = cur()
+      const m = getManual(id)
+      const canPub = can(u, 'view_published', m), canWork = can(u, 'view_work', m)
+      if (!canPub && !canWork) fail(403, '이 매뉴얼을 내려받을 권한이 없습니다.')
+      if (!['md', 'html', 'docx', 'pdf'].includes(format)) fail(422, '내보낼 형식은 md, html, docx, pdf 중 하나입니다.')
+      const work = (view === 'work' && canWork) || !canPub
+      const vid = work ? m.latest_version_id : m.published_version_id
+      const v = vid ? byId('manual_versions', vid) : null
+      const doc = v ? v.content_json : draftOf(id)?.content_json || { type: 'doc', content: [] }
+      const meta = exportMeta(m, v ?? null, work ? 'work' : 'published', u)
+      audit(u, 'manual.export', 'manual', id, m.department_id, { format, view: meta.view, version_no: meta.version_no })
+      save()
+      const html = () => toHtml(render(doc).html, meta)
+      if (format === 'pdf') return { print: html() }
+      if (format === 'md') return { blob: new Blob([toMarkdown(doc, meta)], { type: 'text/markdown;charset=utf-8' }), filename: exportFilename(meta, 'md') }
+      if (format === 'html') return { blob: new Blob([html()], { type: 'text/html;charset=utf-8' }), filename: exportFilename(meta, 'html') }
+      return { blob: await toDocx(doc, meta), filename: exportFilename(meta, 'docx') }
+    },
+    aiStatus: () => W(() => {
+      cur()
+      const cfg = aiSettings()
+      return { enabled: cfg.enabled, mode: cfg.enabled ? 'extractive' : 'off', notice: cfg.enabled ? DEMO_AI_NOTE : '관리자가 AI 질의응답을 꺼 두었습니다.', chat_model: null, semantic: false } as T.AiStatus
+    }),
+    aiAsk: async (question, opts, onEvent) => {
+      const u = cur()
+      const cfg = aiSettings()
+      if (!cfg.enabled) fail(409, '관리자가 AI 질의응답을 꺼 두었습니다.')
+      const q = question.trim()
+      if (!q) fail(422, '질문을 입력하세요.')
+      if (opts.manual_id) require_(can(u, 'view_published', getManual(opts.manual_id)), '이 매뉴얼을 열람할 권한이 없습니다.')
+      const rows = liveManuals()
+        .filter((m) => m.status !== 'archived' && can(u, 'view_published', m) && (!opts.manual_id || m.id === opts.manual_id) && (!opts.dept || m.department_id === opts.dept))
+        .flatMap((m) => chunksOf(m).map((c) => ({ ...c, id: m.id * 10000 + c.ord, manual_id: m.id, title: m.title, tags: m.tags || [], m })))
+      const { keys } = queryTerms(q)
+      const ranked = rankChunks(rows, q, cfg.top_k)
+      const sources: T.AiSource[] = ranked.map(({ row }, i) => {
+        const v = byId('manual_versions', row.m.published_version_id)
+        return {
+          n: i + 1, manual_id: row.manual_id, manual_no: row.m.manual_no, title: row.title, department_name: dept(row.m.department_id)?.name,
+          edition: row.m.edition, version_no: v?.version_no, heading: row.heading, anchor: row.anchor, kind: row.kind, text: row.text,
+          text_html: highlightKeys(row.text, keys), match: 'keyword',
+        }
+      })
+      await delay(null)
+      onEvent({ type: 'meta', mode: sources.length ? 'extractive' : 'none', notice: sources.length ? DEMO_AI_NOTE : null, model: null, semantic: false, keys })
+      onEvent({ type: 'sources', sources })
+      onEvent({ type: 'done', answer: '', cited: [], notice: sources.length ? DEMO_AI_NOTE : '질문과 관련된 공식 매뉴얼 문단을 찾지 못했습니다. 다른 낱말로 다시 물어보세요.' })
+      db.ai_logs = [...((db.ai_logs as Row[]) || []), { id: nextId('ai_logs'), at: nowStr(), user_id: u.id, question: q, mode: sources.length ? 'extractive' : 'none', source_count: sources.length, model: null, ms: 0, error: null }].slice(-200)
+      save()
+    },
+    adminAi: () => W(() => { const u = cur(); require_(can(u, 'admin'), 'AI 모델 설정은 시스템 관리자만 볼 수 있습니다.'); return aiAdminOut(u) }),
+    saveAi: (body) => W(() => {
+      const u = cur()
+      require_(can(u, 'admin'), 'AI 모델 설정은 시스템 관리자만 바꿀 수 있습니다.')
+      const before = aiSettings()
+      const next = { ...before, ...Object.fromEntries(Object.entries(body).filter(([k, v]) => k in AI_DEFAULTS && v != null)) } as T.AiSettings
+      if (!/^https?:\/\/(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(next.base_url)) fail(422, '외부 인터넷 주소는 쓸 수 없습니다. 이 PC(127.0.0.1)나 사내망 주소만 허용합니다.')
+      for (const k of ['chat_model', 'embed_model'] as const) {
+        next[k] = (next[k] || '').trim()
+        if (next[k] && !/^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,99}$/.test(next[k])) fail(422, '모델 이름에 쓸 수 없는 글자가 있습니다.')
+      }
+      next.top_k = Math.max(3, Math.min(10, Number(next.top_k) || 6))
+      db.ai_settings = next as any
+      const changes = Object.fromEntries(Object.keys(next).filter((k) => (before as any)[k] !== (next as any)[k]).map((k) => [k, { from: (before as any)[k], to: (next as any)[k] }]))
+      audit(u, 'ai.settings', 'ai', null, null, changes)
+      return aiAdminOut(u)
+    }),
+    pullAiModel: () => W(() => { const u = cur(); require_(can(u, 'admin')); return fail(409, '데모에는 모델 서버가 없어 내려받을 수 없습니다. PC에 설치한 버전에서 사용하세요.') }),
+    aiPullStatus: () => W(() => { const u = cur(); require_(can(u, 'admin')); return {} }),
+    deleteAiModel: () => W(() => { const u = cur(); require_(can(u, 'admin')); return fail(409, '데모에는 모델 서버가 없습니다.') }),
+    reindexAi: () => W(() => { const u = cur(); require_(can(u, 'admin')); chunkCache.clear(); audit(u, 'ai.reindex', 'ai', null, null, { reset: true }); return aiAdminOut(u) }),
 
     search: (q, o = {}) => W(() => {
       const deptId = o.dept, work = o.work, catId = o.cat

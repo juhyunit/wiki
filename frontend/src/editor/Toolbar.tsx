@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import {
-  AlertOctagon, AlertTriangle, Baseline, Bold, Columns3, FileUp, ImagePlus, Indent, Info, Italic, Link2, List, ListChecks, ListOrdered,
+  AlertOctagon, AlertTriangle, Baseline, Bold, Columns3, FileSymlink, FileUp, ImagePlus, Indent, Info, Italic, Link2, List, ListChecks, ListOrdered,
   Minus, Outdent, Paperclip, Quote, Redo2, Rows3, Strikethrough, Table2, TableCellsMerge, TableCellsSplit, Trash2, Underline, Undo2,
 } from 'lucide-react'
 import { cx } from '../lib/util'
@@ -52,8 +52,8 @@ function ColorPicker({ editor }: { editor: Editor }) {
   )
 }
 
-export function Toolbar({ editor, onImage, onFile, onLink, onImport }: {
-  editor: Editor; onImage: () => void; onFile: () => void; onLink: () => void; onImport?: () => void
+export function Toolbar({ editor, onImage, onFile, onLink, onDocLink, onImport }: {
+  editor: Editor; onImage: () => void; onFile: () => void; onLink: () => void; onDocLink: () => void; onImport?: () => void
 }) {
   const c = () => editor.chain().focus()
   const block = editor.isActive('heading', { level: 1 }) ? 'h1' : editor.isActive('heading', { level: 2 }) ? 'h2' : editor.isActive('heading', { level: 3 }) ? 'h3' : 'p'
@@ -117,7 +117,9 @@ export function Toolbar({ editor, onImage, onFile, onLink, onImport }: {
         <TB title="표 넣기" onClick={() => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}><Table2 size={16} /></TB>
         <TB title="이미지 넣기 (캡처 붙여넣기·끌어놓기도 됩니다)" onClick={onImage}><ImagePlus size={16} /></TB>
         <TB title="파일 첨부" onClick={onFile}><Paperclip size={16} /></TB>
-        <TB title="링크" on={editor.isActive('link')} onClick={onLink}><Link2 size={16} /></TB>
+        <TB title="웹 링크" on={editor.isActive('link') && !String(editor.getAttributes('link').href || '').startsWith('#/m/')} onClick={onLink}><Link2 size={16} /></TB>
+        <TB title="문서 링크 — 다른 매뉴얼 연결 ([[ 입력으로도 열림)" className="tb-text" on={String(editor.getAttributes('link').href || '').startsWith('#/m/')} onClick={onDocLink}>
+          <FileSymlink size={15} /><span>문서 링크</span></TB>
         <Sep />
         <TB title="주의 박스" className="tb-callout warning" on={editor.isActive('callout', { type: 'warning' })} onClick={() => c().toggleCallout('warning').run()}>
           <AlertTriangle size={15} /><span>주의</span></TB>
@@ -131,7 +133,7 @@ export function Toolbar({ editor, onImage, onFile, onLink, onImport }: {
         {onImport && (
           <>
             <Sep />
-            <TB title="DOCX 가져오기 (HWP는 한글에서 DOCX로 저장 후)" className="tb-text" onClick={onImport}><FileUp size={15} /><span>가져오기</span></TB>
+            <TB title="가져오기 — Word(.docx)·Markdown(.md)·HTML(.html). HWP는 한글에서 DOCX로 저장 후" className="tb-text" onClick={onImport}><FileUp size={15} /><span>가져오기</span></TB>
           </>
         )}
       </div>

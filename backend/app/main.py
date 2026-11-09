@@ -13,8 +13,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import ai
 from .db import init_db
 from .routes_admin import router as admin_router
+from .routes_ai import router as ai_router
 from .routes_auth import router as auth_router
 from .routes_manuals import router as manuals_router
 
@@ -23,7 +25,11 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 @asynccontextmanager
 async def lifespan(_app):
     init_db()
+    # 로컬 임베딩 모델이 있으면 뒤에서 근거 문단 임베딩을 채운다(모델 서버가 꺼져 있어도 서버는 정상 동작)
+    if os.environ.get("WORKWIKI_AI_WORKER", "1") == "1":
+        ai.start_worker()
     yield
+    ai.stop_worker()
 
 
 # API 문서 화면은 외부 CDN을 불러오므로 기본으로 끈다(기획서 2.2 내부망 원칙). 필요하면 WORKWIKI_API_DOCS=1
@@ -67,6 +73,7 @@ async def validation_handler(request: Request, exc: RequestValidationError):
 app.include_router(auth_router)
 app.include_router(manuals_router)
 app.include_router(admin_router)
+app.include_router(ai_router)
 
 
 @app.get("/api/health")

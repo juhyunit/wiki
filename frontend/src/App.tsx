@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from './api/client'
-import type { Me, TreeDept } from './api/types'
+import type { AiStatus, Me, TreeDept } from './api/types'
 import { AppCtx } from './app-context'
 import { AppBar } from './components/AppBar'
 import { Sidebar } from './components/Sidebar'
 import { Spinner } from './components/ui'
 import { navigate, useRoute } from './lib/router'
 import { Admin } from './pages/admin/Admin'
+import { Ask } from './pages/Ask'
 import { Department } from './pages/Department'
 import { EditorPage } from './pages/Editor'
 import { History } from './pages/History'
@@ -22,11 +23,12 @@ function Routes() {
     const id = Number(parts[1])
     if (parts[2] === 'edit') return <EditorPage key={`e${id}`} id={id} />
     if (parts[2] === 'history') return <History key={`h${id}`} id={id} qa={query.get('a')} qb={query.get('b')} />
-    return <ManualView id={id} view={query.get('v') === 'work' ? 'work' : 'published'} />
+    return <ManualView key={`v${id}`} id={id} view={query.get('v') === 'work' ? 'work' : 'published'} anchor={query.get('a')} hl={query.get('t')} />
   }
   if (parts[0] === 'd' && parts[1]) return <Department id={Number(parts[1])} />
   if (parts[0] === 'search') return <Search q={query.get('q') || ''} dept={query.get('dept') ? Number(query.get('dept')) : null} cat={query.get('cat') ? Number(query.get('cat')) : null} period={query.get('period') || ''} work={query.get('work') === '1'} />
   if (parts[0] === 'admin') return <Admin tab={parts[1]} />
+  if (parts[0] === 'ask') return <Ask q={query.get('q') || ''} manualId={query.get('m') ? Number(query.get('m')) : null} />
   return <Home />
 }
 
@@ -35,6 +37,10 @@ export default function App() {
   const [tree, setTree] = useState<TreeDept[]>([])
   const [sbOpen, setSbOpen] = useState(false)
   const [newManual, setNewManual] = useState<{ open: boolean; dept?: number }>({ open: false })
+  const [ai, setAi] = useState<AiStatus | null>(null)
+  const reloadAi = useCallback(() => {
+    api.aiStatus().then(setAi).catch(() => setAi(null))
+  }, [])
 
   useEffect(() => {
     api.me().then(setMe).catch(() => setMe(null))
@@ -50,7 +56,10 @@ export default function App() {
     api.me().then((m) => m && setMe(m)).catch(() => {})
   }, [])
   useEffect(() => {
-    if (me) reloadTree()
+    if (me) {
+      reloadTree()
+      reloadAi()
+    }
   }, [me?.id])
   // 알림 수 주기적 갱신
   useEffect(() => {
@@ -82,7 +91,9 @@ export default function App() {
     openNewManual: (dept?: number) => setNewManual({ open: true, dept }),
     isAdminAny: me.roles.length > 0 || me.admin_depts.length > 0,
     openSidebar: () => setSbOpen(true),
-  } : null, [me, tree])
+    ai,
+    reloadAi,
+  } : null, [me, tree, ai])
 
   if (me === undefined) return <div className="boot"><Spinner label="WorkWiki 여는 중" /></div>
   if (!me || !ctx) return <Login onLogin={(m) => setMe(m)} />

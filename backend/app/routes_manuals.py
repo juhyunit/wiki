@@ -11,8 +11,8 @@ import uuid
 from datetime import date, datetime, timedelta
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from . import services as S
@@ -381,6 +381,49 @@ def manual_detail(manual_id: int, view: str = "published", u: User = Depends(cur
         "perms": _perms(conn, m, u),
     })
     return s
+
+
+@router.get("/manuals/{manual_id}/links")
+def manual_links(manual_id: int, view: str = "published", u: User = Depends(current_user), conn=Depends(get_conn)):
+    """이 문서가 참조하는 문서(링크)와 이 문서를 참조하는 문서(역링크). 열람 권한이 없는 문서는 제목을 보이지 않는다."""
+    m = get_manual(conn, manual_id)
+    can_pub = can(conn, u, "view_published", m)
+    can_work = can(conn, u, "view_work", m)
+    if not can_pub and not can_work:
+        raise HTTPException(403, "이 매뉴얼을 열람할 권한이 없습니다.")
+    scope = "latest" if (view == "work" and can_work) or not can_pub else "published"
+
+    def brief(r, **extra):
+        return {"id": r["id"], "manual_no": r["manual_no"], "title": r["title"], "department_name": r["dept_name"],
+                "status": r["status"], "edition": r["edition"], **extra}
+
+    outgoing = []
+    for ln in conn.execute("SELECT * FROM manual_links WHERE source_id=? AND scope=? ORDER BY rowid", (manual_id, scope)).fetchall():
+        t = conn.execute(BASE_SELECT + " WHERE m.id=?", (ln["target_id"],)).fetchone()
+        if not t or t["deleted_at"]:
+            outgoing.append({"id": None, "access": "missing", "link_text": ln["link_text"]})
+            continue
+        ok = can(conn, u, "view_published", t) or can(conn, u, "view_work", t)
+        if ok:
+            outgoing.append(brief(t, access="ok", link_text=ln["link_text"]))
+        else:
+            outgoing.append({"id": None, "access": "archived" if t["status"] == "archived" else "denied", "link_text": ""})
+    backlinks, seen = [], set()
+    rows = conn.execute("SELECT * FROM manual_links WHERE target_id=? ORDER BY CASE scope WHEN 'published' THEN 0 ELSE 1 END, source_id",
+                        (manual_id,)).fetchall()
+    for ln in rows:
+        if ln["source_id"] in seen or ln["source_id"] == manual_id:
+            continue
+        s = conn.execute(BASE_SELECT + " WHERE m.id=?", (ln["source_id"],)).fetchone()
+        if not s or s["deleted_at"] or s["status"] == "archived":
+            continue
+        if ln["scope"] == "published" and can(conn, u, "view_published", s):
+            backlinks.append(brief(s, scope="published", link_text=ln["link_text"]))
+            seen.add(s["id"])
+        elif ln["scope"] == "latest" and can(conn, u, "view_work", s) and s["latest_version_id"] != s["published_version_id"]:
+            backlinks.append(brief(s, scope="work", link_text=ln["link_text"]))
+            seen.add(s["id"])
+    return {"scope": "work" if scope == "latest" else "published", "outgoing": outgoing, "backlinks": backlinks}
 
 
 class MetaIn(BaseModel):
@@ -967,6 +1010,80 @@ async def import_docx(manual_id: int, request: Request, file: UploadFile = File(
     _store(conn, manual_id, u, name, data, "source_original", FILE_EXT[".docx"])
     S.audit(conn, u, "manual.import_docx", "manual", manual_id, m["department_id"], {"name": name}, client_ip(request))
     return {"html": clean, "messages": [str(x.message) for x in res.messages][:10]}
+
+
+# ------------------------------------------------------------------ 내보내기(Markdown·HTML·DOCX·PDF)
+EXPORT_MIME = {"md": "text/markdown; charset=utf-8", "html": "text/html; charset=utf-8",
+               "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "pdf": "application/pdf"}
+
+
+@router.get("/manuals/{manual_id}/export")
+def export_manual(manual_id: int, request: Request, fmt: str = Query("pdf", alias="format"), view: str = "published",
+                  u: User = Depends(current_user), conn=Depends(get_conn)):
+    """화면에 보이는 판(공식본 또는 작업본)을 파일로 내려받는다. 열람 권한 검사 후 감사 로그에 남긴다."""
+    from . import exporters as X
+
+    fmt = fmt.lower()
+    if fmt not in EXPORT_MIME:
+        raise HTTPException(422, "내보낼 형식은 md, html, docx, pdf 중 하나입니다.")
+    m = get_manual(conn, manual_id)
+    can_pub = can(conn, u, "view_published", m)
+    can_work = can(conn, u, "view_work", m)
+    if not can_pub and not can_work:
+        raise HTTPException(403, "이 매뉴얼을 내려받을 권한이 없습니다.")
+    use_work = (view == "work" and can_work) or not can_pub
+    r = conn.execute(BASE_SELECT + " WHERE m.id=?", (manual_id,)).fetchone()
+    vrow, doc, title = None, None, m["title"]
+    if not use_work:
+        vrow = conn.execute("SELECT * FROM manual_versions WHERE id=?", (m["published_version_id"],)).fetchone()
+    elif m["latest_version_id"]:
+        vrow = conn.execute("SELECT * FROM manual_versions WHERE id=?", (m["latest_version_id"],)).fetchone()
+    if vrow:
+        doc, title = json.loads(vrow["content_json"]), vrow["title"]
+    else:
+        dr = conn.execute("SELECT * FROM manual_drafts WHERE manual_id=?", (manual_id,)).fetchone()
+        doc = json.loads(dr["content_json"]) if dr else {"type": "doc", "content": []}
+        title = dr["title"] if dr else title
+    pv = conn.execute("SELECT published_at, published_by FROM manual_versions WHERE id=?", (m["published_version_id"],)).fetchone() \
+        if m["published_version_id"] else None
+    extra = [x["name"] for x in conn.execute("SELECT d.name FROM manual_extra_departments e JOIN departments d ON d.id=e.department_id"
+                                             " WHERE e.manual_id=? ORDER BY d.sort_order", (manual_id,))]
+    meta = X.Meta(title=title, manual_no=m["manual_no"], department_name=r["dept_name"], category_name=r["cat_name"],
+                  edition=m["edition"], version_no=vrow["version_no"] if vrow else None, view="work" if use_work else "published",
+                  published_at=pv["published_at"] if pv else None, published_by=_user_name(conn, pv["published_by"]) if pv else None,
+                  owner_name=r["owner_name"], review_cycle_months=m["review_cycle_months"], next_review_date=m["next_review_date"],
+                  visibility=m["visibility"], extra_departments=extra, tags=json.loads(m["tags"] or "[]"),
+                  exported_by=u.name, base_url=str(request.base_url))
+
+    def image_bytes(aid: int):
+        a = conn.execute("SELECT * FROM attachments WHERE id=? AND manual_id=? AND kind='image'", (aid, manual_id)).fetchone()
+        path = FILES_DIR / a["storage_key"] if a else None
+        return (path.read_bytes(), a["mime"]) if path and path.exists() else None
+
+    def image_data(aid: int):
+        got = image_bytes(aid)
+        return f"data:{got[1]};base64,{__import__('base64').b64encode(got[0]).decode()}" if got else None
+
+    try:
+        if fmt == "md":
+            data = X.to_markdown(doc, meta).encode("utf-8")
+        elif fmt == "html":
+            data = X.to_html(doc, meta, image_data).encode("utf-8")
+        elif fmt == "docx":
+            data = X.to_docx(doc, meta, image_bytes)
+        else:
+            try:
+                data = X.to_pdf(doc, meta, image_bytes)
+            except ImportError:
+                raise HTTPException(501, "PDF 변환 모듈(reportlab)이 설치되지 않았습니다. start.bat을 다시 실행해 패키지를 설치하세요.")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(500, "파일을 만들지 못했습니다. 본문에 손상된 그림이 있는지 확인하세요.")
+    S.audit(conn, u, "manual.export", "manual", manual_id, m["department_id"],
+            {"format": fmt, "view": meta.view, "version_no": meta.version_no}, client_ip(request))
+    return Response(data, media_type=EXPORT_MIME[fmt], headers={
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(meta.filename(fmt))}", "X-Content-Type-Options": "nosniff"})
 
 
 # ------------------------------------------------------------------ 알림

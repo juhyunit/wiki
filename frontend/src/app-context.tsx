@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { Me, TreeDept } from './api/types'
+import type { AiStatus, Me, TreeDept } from './api/types'
 
 export interface AppState {
   me: Me
@@ -10,6 +10,8 @@ export interface AppState {
   openNewManual: (deptId?: number) => void
   isAdminAny: boolean
   openSidebar: () => void
+  ai: AiStatus | null
+  reloadAi: () => void
 }
 
 export const AppCtx = createContext<AppState>(null as any)

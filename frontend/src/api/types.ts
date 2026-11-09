@@ -214,3 +214,57 @@ export interface HrPreview {
 }
 export interface HrRun { id: number; started_at: string; finished_at: string | null; run_by_name: string; created: number; updated: number; deactivated: number; status: string; error: string | null }
 export interface AuditRow { id: number; at: string; actor_name: string | null; action: string; target_type: string | null; target_id: string | null; target_label: string | null; ip: string | null; detail: Record<string, any> }
+
+// ---------------------------------------------------------------- 문서 링크·역링크
+export interface LinkedDoc {
+  id: number | null
+  access?: 'ok' | 'denied' | 'archived' | 'missing'
+  manual_no?: string
+  title?: string
+  department_name?: string
+  status?: string
+  edition?: number
+  scope?: 'published' | 'work'
+  link_text: string
+}
+export interface LinksData { scope: 'published' | 'work'; outgoing: LinkedDoc[]; backlinks: LinkedDoc[] }
+
+export type ExportFormat = 'md' | 'html' | 'docx' | 'pdf'
+
+// ---------------------------------------------------------------- AI 질의응답
+export interface AiSource {
+  n: number
+  manual_id: number
+  manual_no: string
+  title: string
+  department_name: string
+  edition: number
+  version_no: number
+  heading: string
+  anchor: string | null
+  kind: string
+  text: string
+  text_html: string
+  match: 'keyword' | 'semantic' | 'both'
+}
+export type AiEvent =
+  | { type: 'meta'; mode: 'generate' | 'extractive' | 'none'; notice: string | null; model: string | null; semantic: boolean; keys: string[] }
+  | { type: 'sources'; sources: AiSource[] }
+  | { type: 'delta'; text: string }
+  | { type: 'done'; answer: string; cited: number[]; notice: string | null }
+export interface AiStatus { enabled: boolean; mode: 'generate' | 'extractive' | 'off'; notice: string | null; chat_model: string | null; semantic: boolean }
+export interface AiSettings { enabled: boolean; provider: 'ollama' | 'openai'; base_url: string; chat_model: string; embed_model: string; top_k: number; temperature: number; timeout: number }
+export interface AiPreset { name: string; size: string; license: string; note: string }
+export interface AiModelInfo { name: string; size?: number; family?: string; parameter_size?: string; quantization?: string; modified_at?: string }
+export interface AiAdmin {
+  settings: AiSettings
+  presets: { chat: AiPreset[]; embed: AiPreset[] }
+  status: { reachable: boolean; version: string | null; models: AiModelInfo[]; error: string | null; chat_ready: boolean; embed_ready: boolean }
+  mode: 'generate' | 'extractive' | 'off'
+  notice: string | null
+  progress: { total: number; done: number; last_error: string | null; last_run: string | null }
+  pull: { model?: string; running?: boolean; status?: string; total?: number; completed?: number; error?: string | null; started_at?: string; finished_at?: string }
+  logs: { id: number; at: string; user_name: string | null; question: string; mode: string; source_count: number; model: string | null; ms: number | null; error: string | null }[]
+  questions_7d: number
+  demo?: boolean
+}

@@ -97,7 +97,7 @@ def _marks(text: str, marks: list | None) -> str:
             link = safe_href((m.get("attrs") or {}).get("href"))
     if link:
         is_file = link.startswith("/api/files/")
-        cls = ' class="file-link"' if is_file else ""
+        cls = ' class="file-link"' if is_file else (' class="manual-link"' if link.startswith("#/m/") else "")
         target = "" if is_file or link.startswith("#") else ' target="_blank" rel="noopener noreferrer"'
         out = f'<a href="{esc(link)}"{cls}{target}>{out}</a>'
     return out

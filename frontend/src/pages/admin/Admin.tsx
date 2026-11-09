@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  Building2, CalendarClock, CheckCircle2, ClipboardList, FileSearch, LayoutDashboard, RefreshCw, ScrollText, ShieldCheck, Upload,
+  Building2, CalendarClock, CheckCircle2, ClipboardList, Cpu, FileSearch, LayoutDashboard, RefreshCw, ScrollText, ShieldCheck, Upload,
   UserPlus, Users, XCircle,
 } from 'lucide-react'
 import { api } from '../../api/client'
@@ -12,8 +12,9 @@ import { Empty, ErrorBox, Modal, ReviewDate, Spinner, useDialog, useLoad, useToa
 import { navigate } from '../../lib/router'
 import { cx, fmtDateTime } from '../../lib/util'
 import { CategoryModal } from '../Department'
+import { AiTab } from './AiTab'
 
-type Tab = 'overview' | 'approvals' | 'reviews' | 'categories' | 'users' | 'depts' | 'hr' | 'audit' | 'search'
+type Tab = 'overview' | 'approvals' | 'reviews' | 'categories' | 'users' | 'depts' | 'hr' | 'audit' | 'search' | 'ai'
 
 function Overview() {
   const { data, error, reload } = useLoad(() => api.adminOverview(), [])
@@ -494,6 +495,7 @@ const ACTIONS: Record<string, string> = {
   'attachment.upload': '첨부 업로드', 'attachment.download': '첨부 다운로드', 'category.create': '분류 추가', 'category.update': '분류 변경', 'category.delete': '분류 삭제',
   'user.create': '사용자 추가', 'user.update': '사용자 변경', 'user.reset_password': '비밀번호 초기화', 'dept.create': '부서 추가', 'dept.update': '부서 변경',
   'dept.admin_assign': '부서 관리자 지명', 'dept.move_manuals': '매뉴얼 일괄 이동', 'dept.admin_remove': '부서 관리자 해제', 'hr_sync.apply': '인사 동기화', 'hr_sync.blocked': '인사 동기화 중단', 'system.seed': '초기 데이터',
+  'manual.export': '내려받기', 'ai.settings': 'AI 설정 변경', 'ai.model_pull': 'AI 모델 내려받기', 'ai.model_delete': 'AI 모델 삭제', 'ai.reindex': 'AI 색인 다시 만들기',
 }
 
 const DETAIL_LABEL: Record<string, string> = {
@@ -502,9 +504,12 @@ const DETAIL_LABEL: Record<string, string> = {
   tags: '태그', extra_departments: '추가 열람 부서', review_cycle_months: '검토 주기(월)', next_review_date: '다음 검토일', category_id: '분류',
   user: '대상자', can_self_publish: '본인 게시', created: '추가', updated: '변경', deactivated: '비활성화', forced: '강제', ratio: '비율(%)',
   employee_no: '사번', department_id: '부서', count: '건수', is_active: '재직', roles: '역할', approval_mode: '승인 설정', from: '이전', to: '이후', note: '비고', deactivate: '비활성화',
+  format: '형식', view: '보기', model: '모델', chat_model: '답변 모델', embed_model: '임베딩 모델', enabled: '사용', base_url: '모델 서버', provider: '서버 종류',
+  top_k: '근거 수', timeout: '시간 제한', reset: '새로 만들기', cleared: '설정에서 뺌',
 }
 const fmtDetail = (d: Record<string, any>) => Object.entries(d).filter(([, v]) => v !== null && v !== '' && v !== undefined)
-  .map(([k, v]) => `${DETAIL_LABEL[k] || k}: ${typeof v === 'boolean' ? (v ? '예' : '아니오') : Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ') || '-'
+  .map(([k, v]) => `${DETAIL_LABEL[k] || k}: ${typeof v === 'boolean' ? (v ? '예' : '아니오') : Array.isArray(v) ? v.join(', ')
+    : typeof v === 'object' && 'from' in v && 'to' in v ? `${v.from === '' ? '(없음)' : v.from} → ${v.to === '' ? '(없음)' : v.to}` : typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ') || '-'
 
 function AuditTab() {
   const [action, setAction] = useState('')
@@ -589,6 +594,7 @@ export function Admin({ tab }: { tab?: string }) {
     { id: 'hr', label: '인사 동기화', icon: RefreshCw, show: sys },
     { id: 'audit', label: '감사 로그', icon: ScrollText, show: auditor || deptAdmin },
     { id: 'search', label: '검색 로그', icon: FileSearch, show: sys },
+    { id: 'ai', label: 'AI 모델', icon: Cpu, show: sys },
   ]
   const visible = tabs.filter((t) => t.show)
   const cur = (visible.find((t) => t.id === tab) || visible[0]).id
@@ -618,6 +624,7 @@ export function Admin({ tab }: { tab?: string }) {
             {cur === 'hr' && <HrTab />}
             {cur === 'audit' && <AuditTab />}
             {cur === 'search' && <SearchLogsTab />}
+            {cur === 'ai' && <AiTab />}
           </div>
         </div>
       </div>

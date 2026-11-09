@@ -11,6 +11,7 @@ import pytest
 
 _tmp = tempfile.mkdtemp()
 os.environ["WORKWIKI_DATA_DIR"] = _tmp
+os.environ["WORKWIKI_AI_WORKER"] = "0"  # 임베딩은 테스트에서 직접 부른다(뒤 작업자 없이 결과가 늘 같게)
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -325,3 +326,287 @@ def test_legacy_department_codes_migrated(tmp_path):
     assert codes == {"인사부": "1010", "IT부": "9001", "여신심사부": "2010"}
     nos = sorted(r[0] for r in conn.execute("SELECT manual_no FROM manuals"))
     assert nos == ["1010-0001", "2010-0001", "9001-0003"]
+
+
+# ====================================================================== 문서 링크·역링크
+def test_links_and_backlinks_respect_permissions(clients):
+    ls, ga, dp = clients["ln_staff"], clients["ga_staff"], clients["dp_staff"]
+    # 신용대출(5) → 감정평가(6, 여신심사부 한정): 여신심사부는 제목이 보이고, 총무부는 '열람 권한 없음'만 보인다
+    out = ls.get("/api/manuals/5/links").json()["outgoing"]
+    assert out[0]["id"] == 6 and out[0]["access"] == "ok" and out[0]["title"]
+    out = ga.get("/api/manuals/5/links").json()["outgoing"]
+    assert out == [{"id": None, "access": "denied", "link_text": ""}]
+    # PC 보안 점검(10)의 역링크: 온보딩(2)·개인정보 사고 대응(9)
+    back = {b["id"] for b in ga.get("/api/manuals/10/links").json()["backlinks"]}
+    assert back == {2, 9}
+    # 온보딩(2)의 역링크: 인사발령(3, 인사부 한정 + 총무부·정보보호부 추가 열람) → 총무부는 보이고 수신업무부는 안 보인다
+    assert [b["id"] for b in ga.get("/api/manuals/2/links").json()["backlinks"]] == [3]
+    assert dp.get("/api/manuals/2/links").json()["backlinks"] == []
+
+
+def test_new_link_is_indexed_on_save(clients):
+    hs = clients["hr_staff"]
+    m = hs.post("/api/manuals", json={"title": "링크 테스트", "visibility": "company"}, headers=H).json()["id"]
+    hs.post(f"/api/manuals/{m}/lock", headers=H)
+    doc = {"type": "doc", "content": [{"type": "paragraph", "content": [
+        {"type": "text", "text": "법인카드", "marks": [{"type": "link", "attrs": {"href": "#/m/11"}}]}]}]}
+    hs.post(f"/api/manuals/{m}/versions", json={"title": "링크 테스트", "content_json": doc, "change_type": "최초 작성"}, headers=H)
+    html = hs.get(f"/api/manuals/{m}", params={"view": "work"}).json()["content_html"]
+    assert 'href="#/m/11" class="manual-link"' in html
+    # 게시 전 작업본의 링크는 담당 부서에만 '작업본' 역링크로 보인다
+    assert any(b["id"] == m and b["scope"] == "work" for b in hs.get("/api/manuals/11/links").json()["backlinks"])
+    assert all(b["id"] != m for b in clients["ga_staff"].get("/api/manuals/11/links").json()["backlinks"])
+
+
+# ====================================================================== 내보내기
+@pytest.mark.parametrize("fmt", ["md", "html", "docx", "pdf"])
+def test_export_formats(clients, fmt):
+    ls = clients["ln_staff"]
+    r = ls.get("/api/manuals/5/export", params={"format": fmt})
+    assert r.status_code == 200, r.text
+    assert "attachment;" in r.headers["content-disposition"] and quote_name("2010-0001") in r.headers["content-disposition"]
+    body = r.content
+    if fmt == "md":
+        t = body.decode()
+        assert t.startswith("---\ntitle: \"개인 신용대출 심사 절차\"") and "| 소득 형태 |" in t and "> [!IMPORTANT]" in t
+        assert "](http://testserver/#/m/6)" in t  # 문서 링크는 서버 주소를 붙인다
+    elif fmt == "html":
+        t = body.decode()
+        assert "<!DOCTYPE html>" in t and "문서 관리 정보" in t and "<script" not in t and "http://testserver/#/m/6" in t
+    elif fmt == "docx":
+        import zipfile
+        z = zipfile.ZipFile(io.BytesIO(body))
+        xml = z.read("word/document.xml").decode()
+        assert "개인 신용대출 심사 절차" in xml and "<w:tbl>" in xml and "word/numbering.xml" in z.namelist()
+    else:
+        assert body[:5] == b"%PDF-" and len(body) > 3000
+
+
+def test_export_permissions_and_audit(clients):
+    ga = clients["ga_staff"]
+    assert ga.get("/api/manuals/6/export", params={"format": "md"}).status_code == 403  # 부서 한정 문서
+    assert ga.get("/api/manuals/5/export", params={"format": "exe"}).status_code == 422
+    # 작업본을 요청해도 담당 부서가 아니면 공식본만 내려받는다(게시 전 문구 없음)
+    dp = clients["dp_staff"]
+    dp.post("/api/manuals/7/lock", headers=H)
+    doc = dp.get("/api/manuals/7/work-content").json()["content_json"]
+    doc["content"].append({"type": "paragraph", "content": [{"type": "text", "text": "게시전내보내기확인문구"}]})
+    assert dp.post("/api/manuals/7/versions", json={"title": "예금 계좌 개설 업무 처리", "content_json": doc, "change_type": "내용 보완"},
+                   headers=H).status_code == 200
+    dp.delete("/api/manuals/7/lock", headers=H)
+    md = ga.get("/api/manuals/7/export", params={"format": "md", "view": "work"}).text
+    assert "게시전내보내기확인문구" not in md and "공식본" in md
+    md = dp.get("/api/manuals/7/export", params={"format": "md", "view": "work"}).text
+    assert "게시전내보내기확인문구" in md and "작업본" in md
+    logs = clients["admin"].get("/api/admin/audit", params={"action": "manual.export"}).json()["items"]
+    assert any(x["detail"].get("format") == "md" for x in logs)
+
+
+def test_export_embeds_images(clients):
+    ls = clients["ln_staff"]
+    png = io.BytesIO()
+    from PIL import Image
+    Image.new("RGB", (40, 20), "blue").save(png, "PNG")
+    up = ls.post("/api/manuals/6/attachments", files={"file": ("p.png", png.getvalue(), "image/png")}, headers=H).json()
+    ls.post("/api/manuals/6/lock", headers=H)
+    doc = ls.get("/api/manuals/6/work-content").json()["content_json"]
+    doc["content"].append({"type": "image", "attrs": {"src": up["url"], "alt": "그림", "title": "캡션"}})
+    ls.post("/api/manuals/6/versions", json={"title": "담보대출 감정평가 의뢰 방법", "content_json": doc, "change_type": "내용 보완"}, headers=H)
+    ls.delete("/api/manuals/6/lock", headers=H)
+    html = ls.get("/api/manuals/6/export", params={"format": "html", "view": "work"}).text
+    assert "data:image/png;base64," in html and "/api/files/" not in html
+    import zipfile
+    z = zipfile.ZipFile(io.BytesIO(ls.get("/api/manuals/6/export", params={"format": "docx", "view": "work"}).content))
+    assert any(n.startswith("word/media/") for n in z.namelist())
+    assert ls.get("/api/manuals/6/export", params={"format": "pdf", "view": "work"}).status_code == 200
+
+
+def quote_name(s):
+    from urllib.parse import quote
+    return quote(s)
+
+
+# ====================================================================== 새 API 권한(403)
+@pytest.mark.parametrize("who,method,path,body", [
+    ("ga_staff", "get", "/api/manuals/6/links", None),
+    ("ga_staff", "get", "/api/manuals/6/export?format=pdf", None),
+    ("ga_staff", "post", "/api/ai/ask", {"question": "감정평가", "manual_id": 6}),
+    ("hr_lead", "get", "/api/admin/ai", None),
+    ("hr_lead", "put", "/api/admin/ai", {"enabled": False}),
+    ("hr_lead", "post", "/api/admin/ai/pull", {"model": "qwen3:4b"}),
+    ("hr_lead", "get", "/api/admin/ai/pull", None),
+    ("hr_lead", "post", "/api/admin/ai/delete-model", {"model": "qwen3:4b"}),
+    ("hr_lead", "post", "/api/admin/ai/reindex", {"reset": True}),
+    ("ga_staff", "get", "/api/admin/ai", None),
+])
+def test_new_apis_forbidden(clients, who, method, path, body):
+    kw = {"headers": H}
+    if body is not None:
+        kw["json"] = body
+    r = getattr(clients[who], method)(path, **kw)
+    assert r.status_code == 403, (path, r.status_code, r.text)
+
+
+# ====================================================================== AI 질의응답(가짜 로컬 모델 서버)
+import threading  # noqa: E402
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # noqa: E402
+
+
+class FakeOllama(BaseHTTPRequestHandler):
+    models = ["qwen3:4b", "bge-m3:latest"]
+    prompts: list = []
+
+    def log_message(self, *a):
+        pass
+
+    def _send(self, obj, code=200):
+        b = json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
+
+    def _body(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        return json.loads(self.rfile.read(n) or b"{}")
+
+    def do_GET(self):
+        if self.path == "/api/tags":
+            return self._send({"models": [{"name": m, "size": 1000, "details": {"family": "qwen3"}} for m in FakeOllama.models]})
+        if self.path == "/api/version":
+            return self._send({"version": "0.12.0"})
+        self._send({"error": "not found"}, 404)
+
+    def _stream(self, lines):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.end_headers()
+        for ln in lines:
+            self.wfile.write((json.dumps(ln) + "\n").encode())
+            self.wfile.flush()
+
+    def do_POST(self):
+        b = self._body()
+        if self.path == "/api/chat":
+            FakeOllama.prompts.append(b)
+            parts = ["<think>생각 중", "</think>", "모든 신청 건은 소득 증빙을 받습니다 [2].", " 연소득의 1.5배를 넘으면 추가로 받습니다 [3][9]."]
+            return self._stream([{"message": {"content": p}, "done": False} for p in parts] + [{"message": {"content": ""}, "done": True}])
+        if self.path == "/api/embed":
+            from app.chunks import tokens
+            def vec(t):
+                v = [0.0] * 32
+                for tok in tokens(t):
+                    v[hash(tok) % 32] += 1
+                return v
+            return self._send({"embeddings": [vec(t) for t in b["input"]]})
+        if self.path == "/api/pull":
+            FakeOllama.models.append(b["model"])
+            return self._stream([{"status": "pulling manifest"}, {"status": "downloading", "total": 100, "completed": 100}, {"status": "success"}])
+        self._send({"error": "not found"}, 404)
+
+    def do_DELETE(self):
+        b = self._body()
+        if b.get("model") in FakeOllama.models:
+            FakeOllama.models.remove(b["model"])
+            return self._send({})
+        self._send({"error": "model not found"}, 404)
+
+
+@pytest.fixture(scope="module")
+def fake_model():
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), FakeOllama)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{srv.server_address[1]}"
+    srv.shutdown()
+
+
+def ask(c, q, **kw):
+    r = c.post("/api/ai/ask", json={"question": q, **kw}, headers=H)
+    assert r.status_code == 200, r.text
+    return [json.loads(x) for x in r.text.splitlines() if x.strip()]
+
+
+def test_ai_extractive_without_model(clients):
+    """모델 서버가 없으면 근거 문단만 준다(추측 답변 없음). 예시 질문에 신용대출 매뉴얼의 소득 확인 문단이 나온다."""
+    ev = ask(clients["ga_staff"], "대출 심사 시 소득 증빙이 필요한 경우는?")
+    meta, sources, done = ev[0], ev[1]["sources"], ev[-1]
+    assert meta["mode"] == "extractive" and done["answer"] == "" and done["notice"]
+    assert sources and sources[0]["manual_no"] == "2010-0001"
+    assert any("1.5배" in s["text"] for s in sources) and any("<mark>" in s["text_html"] for s in sources)
+
+
+def test_ai_admin_settings_validation(clients, fake_model):
+    ad = clients["admin"]
+    r = ad.put("/api/admin/ai", json={"base_url": "https://api.example.com"}, headers=H)
+    assert r.status_code == 422 and "외부" in r.json()["detail"]
+    r = ad.put("/api/admin/ai", json={"chat_model": "bad model;rm"}, headers=H)
+    assert r.status_code == 422
+    r = ad.put("/api/admin/ai", json={"base_url": fake_model, "provider": "ollama", "chat_model": "qwen3:4b", "embed_model": "bge-m3"}, headers=H)
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["status"]["reachable"] and d["status"]["chat_ready"] and d["status"]["embed_ready"] and d["mode"] == "generate"
+    assert ad.get("/api/admin/audit", params={"action": "ai.settings"}).json()["items"]
+
+
+def test_ai_generate_answer_with_citations_and_permissions(clients, fake_model):
+    from app import ai
+    from app.db import connect
+    conn = connect()
+    try:
+        assert ai.embed_pending(conn, ai.get_settings(conn), limit=1000) > 0
+    finally:
+        conn.close()
+    FakeOllama.prompts.clear()
+    ev = ask(clients["ga_staff"], "대출 심사 시 소득 증빙이 필요한 경우는?")
+    meta, sources = ev[0], ev[1]["sources"]
+    deltas = "".join(e["text"] for e in ev if e["type"] == "delta")
+    done = ev[-1]
+    assert meta["mode"] == "generate" and meta["model"] == "qwen3:4b" and meta["semantic"] is True
+    assert "생각" not in deltas and "<think>" not in deltas  # 생각 과정은 보이지 않는다
+    assert done["cited"] == [2, 3] and "[9]" not in done["answer"]  # 없는 근거 번호는 지운다
+    prompt = FakeOllama.prompts[-1]["messages"][1]["content"]
+    assert "[근거]" in prompt and "대출 심사 시 소득 증빙" in prompt and FakeOllama.prompts[-1]["think"] is False
+    # 부서 한정 문서(감정평가, 여신심사부)는 총무부 직원의 근거·모델 입력에 들어가지 않는다
+    FakeOllama.prompts.clear()
+    ev = ask(clients["ga_staff"], "담보대출 감정평가 의뢰 절차와 협약 법인 배정 방법은?")
+    assert all(s["manual_no"] != "2010-0002" for s in ev[1]["sources"])
+    assert all("감정평가 의뢰서" not in p["messages"][1]["content"] for p in FakeOllama.prompts)
+    ev = ask(clients["ln_staff"], "담보대출 감정평가 의뢰 절차와 협약 법인 배정 방법은?")
+    assert ev[1]["sources"][0]["manual_no"] == "2010-0002"
+    # 한 문서 안에서만 묻기
+    ev = ask(clients["ln_staff"], "소득 증빙", manual_id=5)
+    assert {s["manual_id"] for s in ev[1]["sources"]} == {5}
+    logs = clients["admin"].get("/api/admin/ai").json()["logs"]
+    assert logs and logs[0]["mode"] in ("generate", "extractive")
+
+
+def test_ai_model_pull_delete_and_off(clients, fake_model):
+    import time
+    ad = clients["admin"]
+    assert ad.post("/api/admin/ai/pull", json={"model": "qwen3:1.7b"}, headers=H).status_code == 200
+    for _ in range(50):
+        st = ad.get("/api/admin/ai/pull").json()
+        if not st.get("running"):
+            break
+        time.sleep(0.05)
+    assert st["status"] == "완료" and "qwen3:1.7b" in FakeOllama.models
+    # 쓰는 답변 모델을 지우면 설정에서도 빠지고 근거 문단만 보여 준다
+    d = ad.post("/api/admin/ai/delete-model", json={"model": "qwen3:4b"}, headers=H).json()
+    assert d["settings"]["chat_model"] == "" and d["mode"] == "extractive"
+    assert ask(clients["hr_staff"], "연차 신청 기한")[0]["mode"] == "extractive"
+    # 끄면 질의응답 API가 막힌다
+    ad.put("/api/admin/ai", json={"enabled": False}, headers=H)
+    assert clients["hr_staff"].post("/api/ai/ask", json={"question": "연차"}, headers=H).status_code == 409
+    assert clients["hr_staff"].get("/api/ai/status").json()["mode"] == "off"
+    ad.put("/api/admin/ai", json={"enabled": True, "chat_model": "qwen3:4b", "base_url": "http://127.0.0.1:11434"}, headers=H)
+
+
+def test_chunking_and_query_terms():
+    from app.chunks import doc_chunks, query_terms
+    from app.seed import LOAN_V2
+    ch = doc_chunks(LOAN_V2)
+    assert any(c["heading"] == "4. 소득 확인 기준" and c["kind"] == "table" and c["text"].startswith("모든 신청 건은") for c in ch)
+    assert all(c["anchor"] and c["anchor"].startswith("h-") for c in ch)
+    keys, toks = query_terms("대출 심사 시 소득 증빙이 필요한 경우는?")
+    assert keys[:4] == ["대출", "심사", "소득", "증빙"] and "서류" in [k for k in toks]

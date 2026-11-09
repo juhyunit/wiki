@@ -41,6 +41,16 @@ const file = (f: File, extra: Record<string, string> = {}) => {
   return fd
 }
 
+function filenameOf(res: Response, fallback: string) {
+  const cd = res.headers.get('content-disposition') || ''
+  const m = cd.match(/filename\*=UTF-8''([^;]+)/i)
+  try {
+    return m ? decodeURIComponent(m[1]) : fallback
+  } catch {
+    return fallback
+  }
+}
+
 export const httpApi: Api = {
   mode: 'server',
   async me() {
@@ -86,6 +96,63 @@ export const httpApi: Api = {
   reject: (id, comment) => req('POST', `/api/manuals/${id}/reject`, { comment }),
   upload: (id, f) => req('POST', `/api/manuals/${id}/attachments`, undefined, { form: file(f) }),
   importDocx: (id, f) => req('POST', `/api/manuals/${id}/import-docx`, undefined, { form: file(f) }),
+  links: (id, view = 'published') => req('GET', `/api/manuals/${id}/links${qs({ view })}`),
+  async exportManual(id, format, view = 'published') {
+    let res: Response
+    try {
+      res = await fetch(`/api/manuals/${id}/export${qs({ format, view })}`, { credentials: 'same-origin' })
+    } catch {
+      throw new ApiError(0, '서버에 연결할 수 없습니다. 네트워크를 확인하세요.')
+    }
+    if (!res.ok) {
+      let msg = `파일을 만들지 못했습니다(${res.status}).`
+      try { const j = await res.json(); if (typeof j.detail === 'string') msg = j.detail } catch {}
+      throw new ApiError(res.status, msg)
+    }
+    return { blob: await res.blob(), filename: filenameOf(res, `manual-${id}.${format}`) }
+  },
+  aiStatus: () => req('GET', '/api/ai/status'),
+  async aiAsk(question, opts, onEvent, signal) {
+    let res: Response
+    try {
+      res = await fetch('/api/ai/ask', {
+        method: 'POST', credentials: 'same-origin', signal,
+        headers: { 'X-WorkWiki': '1', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, manual_id: opts.manual_id || undefined, dept: opts.dept || undefined }),
+      })
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return
+      throw new ApiError(0, '서버에 연결할 수 없습니다. 네트워크를 확인하세요.')
+    }
+    if (!res.ok || !res.body) {
+      let msg = `질문을 처리하지 못했습니다(${res.status}).`
+      try { const j = await res.json(); if (typeof j.detail === 'string') msg = j.detail } catch {}
+      if (res.status === 401) window.dispatchEvent(new Event('ww:unauthorized'))
+      throw new ApiError(res.status, msg)
+    }
+    // 한 줄에 하나씩 오는 JSON(NDJSON)을 읽는 대로 화면에 넘긴다
+    const reader = res.body.getReader()
+    const dec = new TextDecoder()
+    let buf = ''
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buf += dec.decode(value, { stream: true })
+      let i
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim()
+        buf = buf.slice(i + 1)
+        if (line) onEvent(JSON.parse(line))
+      }
+    }
+    if (buf.trim()) onEvent(JSON.parse(buf))
+  },
+  adminAi: () => req('GET', '/api/admin/ai'),
+  saveAi: (body) => req('PUT', '/api/admin/ai', body),
+  pullAiModel: (model) => req('POST', '/api/admin/ai/pull', { model }),
+  aiPullStatus: () => req('GET', '/api/admin/ai/pull'),
+  deleteAiModel: (model) => req('POST', '/api/admin/ai/delete-model', { model }),
+  reindexAi: (reset) => req('POST', '/api/admin/ai/reindex', { reset }),
   search: (q, o = {}) => req('GET', `/api/search${qs({ q, dept: o.dept, cat: o.cat, period: o.period, work: o.work ? 'true' : undefined })}`),
   notifications: () => req('GET', '/api/notifications'),
   readNotifications: () => req('POST', '/api/notifications/read'),

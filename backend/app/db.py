@@ -250,6 +250,49 @@ CREATE TABLE IF NOT EXISTS notifications (
     read_at TEXT
 );
 
+-- 문서 간 링크(본문의 '#/m/번호' 링크). 공식본·최신 버전 기준으로 저장 시 다시 만든다 → 역링크 조회
+CREATE TABLE IF NOT EXISTS manual_links (
+    source_id INTEGER NOT NULL REFERENCES manuals(id),
+    scope TEXT NOT NULL CHECK (scope IN ('published','latest')),
+    target_id INTEGER NOT NULL,
+    link_text TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (source_id, scope, target_id)
+);
+
+-- AI 질의응답용 근거 문단(공식본만). 임베딩은 로컬 모델이 있을 때만 채운다
+CREATE TABLE IF NOT EXISTS ai_chunks (
+    id INTEGER PRIMARY KEY,
+    manual_id INTEGER NOT NULL REFERENCES manuals(id),
+    version_id INTEGER NOT NULL,
+    ord INTEGER NOT NULL,
+    heading TEXT NOT NULL DEFAULT '',
+    anchor TEXT,
+    kind TEXT NOT NULL,
+    text TEXT NOT NULL,
+    embedding BLOB,
+    embed_model TEXT
+);
+
+CREATE TABLE IF NOT EXISTS ai_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ai_logs (
+    id INTEGER PRIMARY KEY,
+    at TEXT NOT NULL,
+    user_id INTEGER,
+    question TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    source_count INTEGER NOT NULL DEFAULT 0,
+    manual_ids TEXT NOT NULL DEFAULT '[]',
+    model TEXT,
+    ms INTEGER,
+    error TEXT
+);
+
+CREATE INDEX IF NOT EXISTS ix_links_target ON manual_links(target_id, scope);
+CREATE INDEX IF NOT EXISTS ix_chunks_manual ON ai_chunks(manual_id);
 CREATE INDEX IF NOT EXISTS ix_manuals_dept ON manuals(department_id);
 CREATE INDEX IF NOT EXISTS ix_versions_manual ON manual_versions(manual_id);
 CREATE INDEX IF NOT EXISTS ix_approvals_manual ON approvals(manual_id, decision);
@@ -306,6 +349,14 @@ def init_db() -> bool:
         if empty:
             from .seed import seed
             seed(conn)
+            conn.commit()
+        # 링크·AI 근거 문단 색인이 없거나 색인 방식이 바뀌었으면 전체를 다시 만든다(예전 DB 포함)
+        from .services import INDEX_VERSION, reindex_all
+        cur = conn.execute("SELECT value FROM ai_settings WHERE key='index_version'").fetchone()
+        if not cur or cur["value"] != INDEX_VERSION:
+            reindex_all(conn)
+            conn.execute("INSERT INTO ai_settings(key, value) VALUES ('index_version', ?)"
+                         " ON CONFLICT(key) DO UPDATE SET value=excluded.value", (INDEX_VERSION,))
             conn.commit()
         return empty
     finally:

@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
-import { Bell, ChevronDown, KeyRound, LogOut, Menu, Plus, RotateCcw, Scale, Search, UserRound } from 'lucide-react'
+import { Bell, ChevronDown, KeyRound, LogOut, Menu, MessageSquareText, Plus, RotateCcw, Scale, Search, UserRound } from 'lucide-react'
 import { api } from '../api/client'
 import type { Notification } from '../api/types'
 import { useApp } from '../app-context'
@@ -91,6 +91,8 @@ const LICENSES = [
   ['React, React DOM', 'MIT'], ['TipTap(@tiptap/*), ProseMirror', 'MIT'], ['Vite', 'MIT'], ['TypeScript', 'Apache-2.0'],
   ['Lucide 아이콘', 'ISC'], ['FastAPI, Pydantic', 'MIT'], ['Uvicorn', 'BSD-3-Clause'],
   ['python-multipart', 'Apache-2.0'], ['nh3', 'MIT'], ['mammoth', 'BSD-2-Clause'], ['Pillow', 'MIT-CMU'], ['SQLite', 'Public Domain'],
+  ['ReportLab(PDF 내보내기), charset-normalizer', 'BSD-3-Clause, MIT'], ['marked(Markdown 가져오기)', 'MIT'],
+  ['Ollama(로컬 모델 서버, 별도 설치)', 'MIT'], ['Qwen3 답변 모델(선택)', 'Apache-2.0'], ['BGE-M3 임베딩 모델(선택)', 'MIT'],
 ]
 
 function UserMenu() {
@@ -146,7 +148,7 @@ function UserMenu() {
 }
 
 export function AppBar() {
-  const { me, openSidebar, openNewManual } = useApp()
+  const { me, openSidebar, openNewManual, ai } = useApp()
   const { parts, query } = useRoute()
   const onSearch = parts[0] === 'search'
   const [q, setQ] = useState(onSearch ? query.get('q') || '' : '')
@@ -170,6 +172,11 @@ export function AppBar() {
         <input id="global-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="매뉴얼 검색 (제목·본문·태그)" aria-label="매뉴얼 검색" autoComplete="off" />
         <kbd>/</kbd>
       </form>
+      {ai && ai.mode !== 'off' && (
+        <Link to={q.trim() ? `/ask?q=${encodeURIComponent(q.trim())}` : '/ask'} className={cx('bar-ask', parts[0] === 'ask' && 'on')} title="AI에게 질문(근거 문단과 함께 답)">
+          <MessageSquareText size={16} /> <span>AI 질문</span>
+        </Link>
+      )}
       <div className="appbar-right">
         {canCreate && <button className="btn btn-primary hide-sm" onClick={() => openNewManual()}><Plus size={14} /> 새 매뉴얼</button>}
         <Notifications />

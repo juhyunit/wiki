@@ -50,6 +50,18 @@ export interface Api {
   reject(id: number, comment: string): Promise<void>
   upload(id: number, file: File): Promise<T.Attachment>
   importDocx(id: number, file: File): Promise<{ html: string; messages: string[] }>
+  // 문서 링크·내보내기
+  links(id: number, view?: 'published' | 'work'): Promise<T.LinksData>
+  exportManual(id: number, format: T.ExportFormat, view?: 'published' | 'work'): Promise<{ blob: Blob; filename: string } | { print: string }>
+  // AI 질의응답
+  aiStatus(): Promise<T.AiStatus>
+  aiAsk(question: string, opts: { manual_id?: number | null; dept?: number | null }, onEvent: (e: T.AiEvent) => void, signal?: AbortSignal): Promise<void>
+  adminAi(): Promise<T.AiAdmin>
+  saveAi(body: Partial<T.AiSettings>): Promise<T.AiAdmin>
+  pullAiModel(model: string): Promise<T.AiAdmin['pull']>
+  aiPullStatus(): Promise<T.AiAdmin['pull']>
+  deleteAiModel(model: string): Promise<T.AiAdmin>
+  reindexAi(reset: boolean): Promise<T.AiAdmin>
   // 검색·알림
   search(q: string, opts?: { dept?: number | null; cat?: number | null; period?: string; work?: boolean }): Promise<T.SearchData>
   notifications(): Promise<{ items: T.Notification[]; unread: number }>

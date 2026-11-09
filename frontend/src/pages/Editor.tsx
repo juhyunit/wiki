@@ -3,12 +3,13 @@ import { EditorContent, useEditor } from '@tiptap/react'
 import type { Editor as TEditor } from '@tiptap/react'
 import { AlertTriangle, CheckCircle2, CloudOff, FileClock, FoldHorizontal, Loader2, Lock, MoreHorizontal, RotateCcw, Save, Trash2, UnfoldHorizontal, Unlock, X } from 'lucide-react'
 import { api, ApiError } from '../api/client'
-import type { Doc, ManualDetail, WorkContent } from '../api/types'
+import type { Doc, ManualDetail, TreeManual, WorkContent } from '../api/types'
 import { useApp } from '../app-context'
 import { Link } from '../components/Link'
 import { PageHeader } from '../components/PageHeader'
 import { ErrorBox, Modal, Spinner, useDialog, useToast } from '../components/ui'
 import { buildExtensions, cleanPastedHTML, extractRtfImages } from '../editor/extensions'
+import { fileToEditorHtml, IMPORT_ACCEPT, importKind } from '../editor/importers'
 import { Toolbar } from '../editor/Toolbar'
 import { navigate } from '../lib/router'
 import { useWideView } from '../lib/wide'
@@ -128,8 +129,8 @@ function SaveModal({ detail, isFirst, onClose, onSave }: {
   )
 }
 
-function EditorBody({ id, initial, onChange, onReady, readOnly }: {
-  id: number; initial: Doc; onChange: (doc: Doc) => void; onReady: (e: TEditor) => void; readOnly?: boolean
+function EditorBody({ id, initial, onChange, onReady, onDocLink, readOnly }: {
+  id: number; initial: Doc; onChange: (doc: Doc) => void; onReady: (e: TEditor) => void; onDocLink: () => void; readOnly?: boolean
 }) {
   const toast = useToast()
   const editorRef = useRef<TEditor | null>(null)
@@ -180,6 +181,14 @@ function EditorBody({ id, initial, onChange, onReady, readOnly }: {
       }
     }
   }, [id])
+  // 가져오기로 들어온 data URI 그림도 붙여넣기와 같이 첨부로 올린다
+  useEffect(() => {
+    const h = () => window.setTimeout(uploadInlineImages, 0)
+    window.addEventListener('ww:inline-images', h)
+    return () => window.removeEventListener('ww:inline-images', h)
+  }, [uploadInlineImages])
+  const docLinkRef = useRef(onDocLink)
+  docLinkRef.current = onDocLink
   const editor = useEditor({
     extensions: buildExtensions({ placeholder: true }),
     content: initial,
@@ -187,6 +196,15 @@ function EditorBody({ id, initial, onChange, onReady, readOnly }: {
     shouldRerenderOnTransaction: true,
     editorProps: {
       attributes: { class: 'prose editor-prose', spellcheck: 'false' },
+      // '[['를 입력하면 문서 링크 고르기 창을 연다(입력한 '[['는 지운다)
+      handleTextInput: (view, from, to, text) => {
+        if (text === '[' && from > 0 && view.state.doc.textBetween(from - 1, from) === '[') {
+          view.dispatch(view.state.tr.delete(from - 1, to))
+          window.setTimeout(() => docLinkRef.current(), 0)
+          return true
+        }
+        return false
+      },
       transformPastedHTML: (html) => {
         const { rtf, imageOnly } = pasteInfo.current
         pasteInfo.current = { rtf: [], imageOnly: false }
@@ -234,6 +252,41 @@ function EditorBody({ id, initial, onChange, onReady, readOnly }: {
   return <EditorContent editor={editor} className="editor-content" />
 }
 
+// 문서 링크 고르기: 내가 볼 수 있는 매뉴얼(왼쪽 메뉴와 같은 목록)에서 찾아 연결한다
+function DocLinkPicker({ currentId, onPick, onClose }: { currentId: number; onPick: (m: TreeManual, dept: string) => void; onClose: () => void }) {
+  const { tree } = useApp()
+  const [q, setQ] = useState('')
+  const [sel, setSel] = useState(0)
+  const all = useMemo(() => tree.flatMap((d) => d.manuals.filter((m) => m.id !== currentId).map((m) => ({ m, dept: d.name }))), [tree, currentId])
+  const list = useMemo(() => {
+    const k = q.trim().toLowerCase()
+    return (k ? all.filter(({ m, dept }) => `${m.title} ${m.manual_no} ${dept}`.toLowerCase().includes(k)) : all).slice(0, 50)
+  }, [all, q])
+  useEffect(() => setSel(0), [q])
+  return (
+    <Modal title="문서 링크" onClose={onClose} width={560}>
+      <input className="picker-input" autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="매뉴얼 제목·문서 번호로 찾기" aria-label="매뉴얼 찾기"
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') { e.preventDefault(); setSel((s) => Math.min(list.length - 1, s + 1)) }
+          if (e.key === 'ArrowUp') { e.preventDefault(); setSel((s) => Math.max(0, s - 1)) }
+          if (e.key === 'Enter' && list[sel] && !e.nativeEvent.isComposing) { e.preventDefault(); onPick(list[sel].m, list[sel].dept) }
+        }} />
+      <div className="picker-list" role="listbox">
+        {list.length === 0 && <div className="muted small pad">맞는 매뉴얼이 없습니다.</div>}
+        {list.map(({ m, dept }, i) => (
+          <button key={m.id} type="button" role="option" aria-selected={i === sel} className={cx('picker-item', i === sel && 'on')}
+            onMouseEnter={() => setSel(i)} onClick={() => onPick(m, dept)}>
+            <span className="picker-title">{m.title}</span>
+            <span className="picker-meta">{m.manual_no} · {dept}{m.status === 'draft' ? ' · 작성 중' : ''}</span>
+          </button>
+        ))}
+      </div>
+      <p className="muted small" style={{ margin: '10px 0 0' }}>고른 글자가 있으면 그 글자에, 없으면 문서 제목으로 링크를 넣습니다. 링크한 문서에는 ‘이 문서를 참조하는 문서’로 표시됩니다.
+        열람 권한이 없는 직원에게는 제목 없이 ‘열람 권한이 없는 문서’로 보입니다.</p>
+    </Modal>
+  )
+}
+
 export function EditorPage({ id }: { id: number }) {
   const { me, tree, reloadTree, refreshMe } = useApp()
   const toast = useToast()
@@ -251,6 +304,7 @@ export function EditorPage({ id }: { id: number }) {
   const [showSave, setShowSave] = useState(false)
   const [menu, setMenu] = useState(false)
   const [editor, setEditor] = useState<TEditor | null>(null)
+  const [docLink, setDocLink] = useState(false)
 
   const latest = useRef<{ title: string; doc: Doc } | null>(null)
   const serverAtRef = useRef<string | null>(null)
@@ -458,6 +512,15 @@ export function EditorPage({ id }: { id: number }) {
     else editor.chain().focus().extendMarkRange('link').setLink({ href }).run()
   }
 
+  const insertDocLink = (m: TreeManual) => {
+    setDocLink(false)
+    if (!editor) return
+    const href = `#/m/${m.id}`
+    if (editor.state.selection.empty) {
+      editor.chain().focus().insertContent([{ type: 'text', text: m.title, marks: [{ type: 'link', attrs: { href } }] }, { type: 'text', text: ' ' }]).run()
+    } else editor.chain().focus().extendMarkRange('link').setLink({ href }).run()
+  }
+
   const onPickImage = async (files: FileList | null) => {
     if (!files || !editor) return
     for (const f of Array.from(files)) {
@@ -484,20 +547,42 @@ export function EditorPage({ id }: { id: number }) {
       }
     }
   }
+  // 가져오기: 바꿀지 뒤에 붙일지 묻고 편집기에 넣는다(DOCX는 서버 변환, Markdown·HTML은 이 화면에서 변환)
+  const putImported = async (html: string, label: string) => {
+    if (!editor) return
+    const empty = editor.getText().trim().length === 0
+    let mode: 'replace' | 'append' = 'replace'
+    if (!empty) {
+      const ok = await dialog({ title: `${label} 가져오기`, message: '현재 내용을 가져온 내용으로 바꿀까요? “뒤에 붙이기”를 누르면 현재 내용 뒤에 붙입니다.', confirmText: '바꾸기', cancelText: '뒤에 붙이기' })
+      mode = ok ? 'replace' : 'append'
+    }
+    if (mode === 'replace') editor.chain().focus().setContent(html, { emitUpdate: true }).run()
+    else editor.chain().focus('end').insertContent(html).run()
+    window.dispatchEvent(new Event('ww:inline-images'))
+  }
+  const onPickImport = async (files: FileList | null) => {
+    const f = files?.[0]
+    if (!f || !editor) return
+    const kind = importKind(f.name)
+    if (!kind) return toast('가져올 수 있는 파일은 Word(.docx), Markdown(.md), HTML(.html)입니다.', 'err')
+    if (kind === 'docx') return onPickDocx(files)
+    try {
+      const r = await fileToEditorHtml(f)
+      await putImported(r.html, kind === 'md' ? 'Markdown' : 'HTML')
+      if (r.title && !title.trim()) onTitleChange(r.title)
+      toast('가져왔습니다. 표·목록·박스가 맞게 들어왔는지 확인하고 저장하세요.')
+    } catch (e: any) {
+      toast(e.message || '파일을 읽지 못했습니다.', 'err')
+    }
+  }
   const onPickDocx = async (files: FileList | null) => {
     const f = files?.[0]
     if (!f || !editor) return
+    if (api.mode !== 'server') return toast('Word(DOCX) 가져오기는 PC에 설치한 버전(서버)에서 동작합니다. Markdown·HTML은 데모에서도 됩니다.', 'info')
     try {
       toast('DOCX를 변환하는 중입니다…', 'info')
       const r = await api.importDocx(id, f)
-      const empty = editor.getText().trim().length === 0
-      let mode: 'replace' | 'append' = 'replace'
-      if (!empty) {
-        const ok = await dialog({ title: 'DOCX 가져오기', message: '현재 내용을 변환 결과로 바꿀까요? “취소”를 누르면 현재 내용 뒤에 붙입니다.', confirmText: '바꾸기', cancelText: '뒤에 붙이기' })
-        mode = ok ? 'replace' : 'append'
-      }
-      if (mode === 'replace') editor.chain().focus().setContent(r.html, { emitUpdate: true }).run()
-      else editor.chain().focus('end').insertContent(r.html).run()
+      await putImported(r.html, 'DOCX')
       toast('가져왔습니다. 변환 결과는 초안이니 원본(첨부에 보관)과 비교해 다듬어 주세요.')
     } catch (e: any) {
       toast(e.message, 'err')
@@ -599,7 +684,7 @@ export function EditorPage({ id }: { id: number }) {
         )}
         {editor && (
           <Toolbar editor={editor} onImage={() => imgInput.current?.click()} onFile={() => fileInput.current?.click()} onLink={insertLink}
-            onImport={api.mode === 'server' ? () => docxInput.current?.click() : undefined} />
+            onDocLink={() => setDocLink(true)} onImport={() => docxInput.current?.click()} />
         )}
         <div className="editor-sheet">
           <input className="doc-title-input" value={title} onChange={(e) => onTitleChange(e.target.value)} placeholder="매뉴얼 제목" maxLength={200} aria-label="제목" />
@@ -607,12 +692,13 @@ export function EditorPage({ id }: { id: number }) {
             {detail.manual_no} · {detail.department_name} · {work.base_version_no ? `v${work.base_version_no}에서 수정 중` : '새 매뉴얼'}
             {detail.published && ` · 직원들은 게시 전까지 제${detail.edition}판을 봅니다`}
           </div>
-          <EditorBody id={id} initial={work.content_json} onChange={onDocChange} onReady={setEditor} />
+          <EditorBody id={id} initial={work.content_json} onChange={onDocChange} onReady={setEditor} onDocLink={() => setDocLink(true)} />
         </div>
         <input ref={imgInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden onChange={(e) => { onPickImage(e.target.files); e.target.value = '' }} />
         <input ref={fileInput} type="file" multiple hidden onChange={(e) => { onPickFile(e.target.files); e.target.value = '' }} />
-        <input ref={docxInput} type="file" accept=".docx" hidden onChange={(e) => { onPickDocx(e.target.files); e.target.value = '' }} />
+        <input ref={docxInput} type="file" accept={IMPORT_ACCEPT} hidden onChange={(e) => { onPickImport(e.target.files); e.target.value = '' }} />
       </div>
+      {docLink && <DocLinkPicker currentId={id} onPick={insertDocLink} onClose={() => { setDocLink(false); editor?.commands.focus() }} />}
       {showSave && <SaveModal detail={detail} isFirst={work.base_version_no == null} onClose={() => setShowSave(false)} onSave={doSave} />}
     </>
   )

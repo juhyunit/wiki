@@ -5,3 +5,4 @@ python-multipart>=0.0.9  # Apache-2.0
 nh3>=0.2.17           # MIT
 mammoth>=1.8          # BSD-2
 Pillow>=10.3          # MIT-CMU
+reportlab>=5.0        # BSD-3 (PDF 내보내기, 의존: charset-normalizer MIT)

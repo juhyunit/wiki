@@ -1,17 +1,50 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Archive, ArchiveRestore, CheckCircle2, Clock, Eye, FileClock, Info, Lock, MoreHorizontal, PanelRightClose, PanelRightOpen, Paperclip,
+  Archive, ArchiveRestore, Clock, FileClock, Info, Lock, MessageSquareText, MoreHorizontal, PanelRightClose, PanelRightOpen, Paperclip,
   PenLine, Printer, Send, Star, Trash2, Unlock, XCircle,
 } from 'lucide-react'
 import { api } from '../api/client'
 import type { Dept, ManualDetail, TocItem } from '../api/types'
 import { useApp } from '../app-context'
+import { DocInfoCard, ExportMenu, LinkedDocs } from '../components/DocParts'
 import { Link } from '../components/Link'
 import { PageHeader } from '../components/PageHeader'
-import { ErrorBox, Modal, ReviewDate, Spinner, StatusText, useDialog, useLoad, useToast } from '../components/ui'
+import { ErrorBox, Modal, ReviewDate, Spinner, useDialog, useLoad, useToast } from '../components/ui'
 import { navigate } from '../lib/router'
 import { useWideView } from '../lib/wide'
 import { cx, fileSize, fmtDate, fmtDateTime, fmtTime, relTime } from '../lib/util'
+
+const norm = (s: string) => s.replace(/\s+/g, ' ').trim()
+
+// AI 답변의 근거에서 '문서에서 보기'로 왔을 때: 그 절(제목)로 가서 근거 문단을 잠깐 강조한다
+function useEvidence(ready: boolean, anchor: string | null, text: string | null) {
+  useEffect(() => {
+    if (!ready || (!anchor && !text)) return
+    const root = document.querySelector('.doc .prose') as HTMLElement | null
+    if (!root) return
+    const head = anchor ? root.querySelector('#' + CSS.escape(anchor)) as HTMLElement | null : null
+    let target: HTMLElement | null = null
+    const want = text ? norm(text).slice(0, 24) : ''
+    if (want) {
+      const start = head ? head.nextElementSibling : root.firstElementChild
+      for (let el = start as HTMLElement | null; el; el = el.nextElementSibling as HTMLElement | null) {
+        if (head && /^H[1-4]$/.test(el.tagName) && el.tagName <= head.tagName) break
+        if (norm(el.textContent || '').includes(want)) { target = el; break }
+      }
+      if (!target) target = Array.from(root.children).find((el) => norm(el.textContent || '').includes(want)) as HTMLElement | null
+    }
+    const goal = target || head
+    if (!goal) return
+    const t = window.setTimeout(() => {
+      goal.scrollIntoView({ behavior: 'smooth', block: target ? 'center' : 'start' })
+      if (target) {
+        target.classList.add('evidence-hl')
+        window.setTimeout(() => target!.classList.remove('evidence-hl'), 6000)
+      }
+    }, 120)
+    return () => window.clearTimeout(t)
+  }, [ready, anchor, text])
+}
 
 export function Toc({ toc, containerSelector = '.prose', onHide }: { toc: TocItem[]; containerSelector?: string; onHide?: () => void }) {
   const [active, setActive] = useState<string | null>(null)
@@ -213,8 +246,8 @@ function MoreMenu({ m, reload }: { m: ManualDetail; reload: () => void }) {
   )
 }
 
-export function ManualView({ id, view }: { id: number; view: 'published' | 'work' }) {
-  const { me, tree, reloadTree, refreshMe } = useApp()
+export function ManualView({ id, view, anchor = null, hl = null }: { id: number; view: 'published' | 'work'; anchor?: string | null; hl?: string | null }) {
+  const { me, tree, reloadTree, refreshMe, ai } = useApp()
   const toast = useToast()
   const dialog = useDialog()
   const { data: m, error, loading, reload, setData } = useLoad(() => api.manual(id, view), [id, view])
@@ -258,6 +291,16 @@ export function ManualView({ id, view }: { id: number; view: 'published' | 'work
     window.print()
   }
   const code = tree.find((d) => d.id === m?.department_id)?.code
+  useEvidence(!!m, anchor, hl)
+  // 본문 안의 문서 링크(#/m/번호)는 화면 안에서 이동한다(데모의 메모리 경로에서도 동작)
+  const onProseClick = (e: React.MouseEvent) => {
+    const a = (e.target as HTMLElement).closest('a') as HTMLAnchorElement | null
+    const href = a?.getAttribute('href') || ''
+    if (/^#\/m\/\d+/.test(href) && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault()
+      navigate(href.slice(1))
+    }
+  }
 
   const crumbs = useMemo(() => {
     if (!m) return [{ label: '매뉴얼' }]
@@ -290,7 +333,11 @@ export function ManualView({ id, view }: { id: number; view: 'published' | 'work
             {wide ? <PanelRightOpen size={17} /> : <PanelRightClose size={17} />}
           </button>
         )}
+        {ai && ai.mode !== 'off' && m.can_view_published && (
+          <Link to={`/ask?m=${id}`} className="icon-btn hide-sm" title="이 문서에 AI로 질문" aria-label="이 문서에 AI로 질문"><MessageSquareText size={17} /></Link>
+        )}
         <button className="icon-btn hide-sm" onClick={print} title="인쇄" aria-label="인쇄"><Printer size={17} /></button>
+        <ExportMenu m={m} />
         {m.perms.edit && <Link to={`/m/${id}/edit`} className="btn"><PenLine size={15} /> 편집</Link>}
         <MoreMenu m={m} reload={reload} />
       </>} />
@@ -350,26 +397,10 @@ export function ManualView({ id, view }: { id: number; view: 'published' | 'work
                   <Star size={20} fill={m.is_favorite ? 'currentColor' : 'none'} />
                 </button>
               </h1>
-              <div className="doc-meta">
-                <span>{m.manual_no}</span>
-                <span className="sep">·</span>
-                {isWork ? (
-                  <span className="meta-em">{m.shown_version_no ? `작업본 v${m.shown_version_no}` : '저장 전 초안'}</span>
-                ) : m.published ? (
-                  <span><span className="meta-em">제{m.edition}판</span> (v{m.version_no}) · {m.published.published_by_name} 님이 {fmtDate(m.published.published_at)} 게시</span>
-                ) : <span>미게시</span>}
-                <span className="sep">·</span>
-                <span>담당 {m.owner_name || '-'}{!m.owner_active && <span className="st st-red">재지정 필요</span>}</span>
-                <span className="sep">·</span>
-                <span>다음 검토 <ReviewDate d={m.next_review_date} /></span>
-                <StatusText m={m} showVisibility />
-              </div>
-              {m.tags.length > 0 && (
-                <div className="doc-tags">{m.tags.map((t) => <Link key={t} to={`/search?q=${encodeURIComponent(t)}`} className="tag">#{t}</Link>)}</div>
-              )}
+              <DocInfoCard m={m} />
             </header>
 
-            {m.content_html ? <div className="prose" dangerouslySetInnerHTML={{ __html: m.content_html }} /> : <p className="empty-text">아직 본문이 없습니다.</p>}
+            {m.content_html ? <div className="prose" onClick={onProseClick} dangerouslySetInnerHTML={{ __html: m.content_html }} /> : <p className="empty-text">아직 본문이 없습니다.</p>}
 
             {m.attachments.length > 0 && (
               <section className="attachments">
@@ -383,6 +414,7 @@ export function ManualView({ id, view }: { id: number; view: 'published' | 'work
                 ))}
               </section>
             )}
+            <LinkedDocs id={id} view={m.view} canEdit={m.perms.edit} reloadKey={m.updated_at} />
             <footer className="doc-foot">최근 30일 조회 {m.views_30d}회 · 최종 수정 {fmtDateTime(m.updated_at)}</footer>
           </article>
           {!wide && m.toc.length > 0 && (

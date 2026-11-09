@@ -107,18 +107,54 @@ def published_attachment_ids(conn: sqlite3.Connection, m) -> set[int]:
 
 
 # ---------- 색인(기획서 10장: 저장 시 같은 트랜잭션에서 갱신) ----------
+# 링크·근거 문단 나누는 방식이 바뀌면 올린다 → 서버 시작 때 전체 색인을 다시 만든다
+INDEX_VERSION = "2026-11-links-ai-1"
+
+
 def index_manual(conn: sqlite3.Connection, manual_id: int):
+    from .chunks import doc_chunks, doc_links
+
     m = conn.execute("SELECT * FROM manuals WHERE id=?", (manual_id,)).fetchone()
     conn.execute("DELETE FROM search_index WHERE manual_id=?", (manual_id,))
+    conn.execute("DELETE FROM manual_links WHERE source_id=?", (manual_id,))
     if not m or m["deleted_at"]:
+        conn.execute("DELETE FROM ai_chunks WHERE manual_id=?", (manual_id,))
         return
     tags = " ".join(json.loads(m["tags"] or "[]"))
     for scope, vid in (("published", m["published_version_id"]), ("latest", m["latest_version_id"])):
         if not vid:
             continue
-        v = conn.execute("SELECT title, content_text FROM manual_versions WHERE id=?", (vid,)).fetchone()
+        v = conn.execute("SELECT title, content_text, content_json FROM manual_versions WHERE id=?", (vid,)).fetchone()
         conn.execute("INSERT INTO search_index(manual_id, scope, title, body_text, tags) VALUES (?,?,?,?,?)",
                      (manual_id, scope, v["title"], v["content_text"], tags))
+        # 문서 간 링크(자기 자신은 제외)
+        for target, text in doc_links(json.loads(v["content_json"])).items():
+            if target != manual_id:
+                conn.execute("INSERT OR REPLACE INTO manual_links(source_id, scope, target_id, link_text) VALUES (?,?,?,?)",
+                             (manual_id, scope, target, text))
+    # AI 근거 문단: 공식본만. 공식본이 그대로면 임베딩을 지키려고 다시 만들지 않는다
+    pvid = m["published_version_id"]
+    have = conn.execute("SELECT DISTINCT version_id FROM ai_chunks WHERE manual_id=?", (manual_id,)).fetchall()
+    if [r[0] for r in have] != ([pvid] if pvid else []):
+        conn.execute("DELETE FROM ai_chunks WHERE manual_id=?", (manual_id,))
+        if pvid:
+            v = conn.execute("SELECT content_json FROM manual_versions WHERE id=?", (pvid,)).fetchone()
+            for c in doc_chunks(json.loads(v["content_json"])):
+                conn.execute("INSERT INTO ai_chunks(manual_id, version_id, ord, heading, anchor, kind, text) VALUES (?,?,?,?,?,?,?)",
+                             (manual_id, pvid, c["ord"], c["heading"], c["anchor"], c["kind"], c["text"]))
+            try:
+                from . import ai
+                ai.wake_worker()
+            except Exception:
+                pass
+
+
+def reindex_all(conn: sqlite3.Connection, rechunk: bool = True):
+    """검색·링크·근거 문단 색인 전체를 다시 만든다. rechunk=False면 바뀐 공식본만 근거 문단을 다시 나눈다(임베딩 유지)."""
+    if rechunk:
+        conn.execute("DELETE FROM ai_chunks")
+    for r in conn.execute("SELECT id FROM manuals").fetchall():
+        index_manual(conn, r["id"])
 
 
 # ---------- 버전 ----------
