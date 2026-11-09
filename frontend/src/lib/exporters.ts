@@ -222,7 +222,7 @@ export const EXPORT_CSS = `:root{--primary:#263b63;--primary-light:#e9eff8;--pri
 .prose blockquote{margin:1em 0;padding:2px 0 2px 14px;border-left:3px solid var(--primary-line);color:#3b475a}.prose pre{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:10px 12px;font-size:13px;white-space:pre-wrap}
 .prose code{background:var(--bg);padding:0 4px;border-radius:3px;font-size:.9em}.prose hr{border:none;border-top:1px solid var(--line);margin:2em 0}
 .prose ul[data-type=taskList]{list-style:none;padding-left:0}.prose ul[data-type=taskList] li{display:flex;gap:8px}.prose ul[data-type=taskList] li>label{flex-shrink:0}.prose ul[data-type=taskList] li>div{flex:1}
-.callout{margin:1em 0;padding:10px 14px;border:1px solid var(--c-line);border-left:3px solid var(--c-accent);border-radius:4px;background:var(--c-bg)}.callout-label{font-weight:700;font-size:13px;color:var(--c-accent);margin-bottom:2px}
+.callout{margin:1em 0;padding:10px 14px;border:1px solid var(--c-line);border-radius:4px;background:var(--c-bg)}.callout-label{font-weight:700;font-size:13px;color:var(--c-accent);margin-bottom:2px}
 .callout-body>:first-child{margin-top:0}.callout-body>:last-child{margin-bottom:0}.callout-warning{--c-accent:var(--amber);--c-bg:var(--amber-bg);--c-line:var(--amber-line)}.callout-danger{--c-accent:var(--accent-text);--c-bg:var(--accent-light);--c-line:var(--accent-line)}.callout-info{--c-accent:var(--primary);--c-bg:var(--primary-light);--c-line:var(--primary-line)}
 .foot{margin-top:44px;padding-top:12px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
 @media (max-width:640px){.info-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.doc{padding:24px 18px}}@media print{.doc{padding:0;max-width:none}@page{size:A4;margin:16mm 15mm}}`
@@ -437,9 +437,9 @@ class DocxWriter {
   }
   callout(node: any): string {
     const kind = CALLOUT[node.attrs?.type] ? node.attrs.type : 'info'
-    const [bg, ln, fg] = CALLOUT_COLORS[kind]
+    const [bg, , fg] = CALLOUT_COLORS[kind]
     const inner = para(run(CALLOUT[kind], { bold: true, color: '#' + fg }), { after: 20 }) + (this.blocks(node.content) || para(''))
-    return `<w:tbl><w:tblPr><w:tblW w:w="${TEXT_W}" w:type="dxa"/><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="${bg}"/><w:left w:val="single" w:sz="24" w:space="0" w:color="${ln}"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="${bg}"/><w:right w:val="single" w:sz="4" w:space="0" w:color="${bg}"/></w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="100" w:type="dxa"/><w:left w:w="180" w:type="dxa"/><w:bottom w:w="100" w:type="dxa"/><w:right w:w="180" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="${TEXT_W}"/></w:tblGrid><w:tr><w:trPr><w:cantSplit/></w:trPr><w:tc><w:tcPr><w:tcW w:w="${TEXT_W}" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="${bg}"/></w:tcPr>${inner}</w:tc></w:tr></w:tbl>` + para('', { after: 60 })
+    return `<w:tbl><w:tblPr><w:tblW w:w="${TEXT_W}" w:type="dxa"/><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="${bg}"/><w:left w:val="single" w:sz="4" w:space="0" w:color="${bg}"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="${bg}"/><w:right w:val="single" w:sz="4" w:space="0" w:color="${bg}"/></w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="100" w:type="dxa"/><w:left w:w="180" w:type="dxa"/><w:bottom w:w="100" w:type="dxa"/><w:right w:w="180" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="${TEXT_W}"/></w:tblGrid><w:tr><w:trPr><w:cantSplit/></w:trPr><w:tc><w:tcPr><w:tcW w:w="${TEXT_W}" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="${bg}"/></w:tcPr>${inner}</w:tc></w:tr></w:tbl>` + para('', { after: 60 })
   }
   infoTable(): string {
     const rows = metaRows(this.meta)

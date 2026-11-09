@@ -363,7 +363,7 @@ body{margin:0;background:#fff;color:#2b3648;font-family:ui-sans-serif,-apple-sys
 .prose hr{border:none;border-top:1px solid var(--line);margin:2em 0}
 .prose ul[data-type=taskList]{list-style:none;padding-left:0}.prose ul[data-type=taskList] li{display:flex;gap:8px}
 .prose ul[data-type=taskList] li>label{flex-shrink:0}.prose ul[data-type=taskList] li>div{flex:1}
-.callout{margin:1em 0;padding:10px 14px;border:1px solid var(--c-line);border-left:3px solid var(--c-accent);border-radius:4px;background:var(--c-bg)}
+.callout{margin:1em 0;padding:10px 14px;border:1px solid var(--c-line);border-radius:4px;background:var(--c-bg)}
 .callout-label{font-weight:700;font-size:13px;color:var(--c-accent);margin-bottom:2px}
 .callout-body>:first-child{margin-top:0}.callout-body>:last-child{margin-bottom:0}
 .callout-warning{--c-accent:var(--amber);--c-bg:var(--amber-bg);--c-line:var(--amber-line)}
@@ -688,11 +688,11 @@ class Docx:
     def callout(self, node) -> str:
         kind = (node.get("attrs") or {}).get("type")
         kind = kind if kind in ALLOWED_CALLOUTS else "info"
-        bg, line, fg = CALLOUT_COLORS[kind]
+        bg, _line, fg = CALLOUT_COLORS[kind]
         label = self.para(self.run(ALLOWED_CALLOUTS[kind], bold=True, color="#" + fg), after=20)
         inner = label + (self.blocks(node.get("content")) or self.para(""))
         return (f'<w:tbl><w:tblPr><w:tblW w:w="{TEXT_W}" w:type="dxa"/><w:tblBorders>'
-                f'<w:top w:val="single" w:sz="4" w:space="0" w:color="{bg}"/><w:left w:val="single" w:sz="24" w:space="0" w:color="{line}"/>'
+                f'<w:top w:val="single" w:sz="4" w:space="0" w:color="{bg}"/><w:left w:val="single" w:sz="4" w:space="0" w:color="{bg}"/>'
                 f'<w:bottom w:val="single" w:sz="4" w:space="0" w:color="{bg}"/><w:right w:val="single" w:sz="4" w:space="0" w:color="{bg}"/>'
                 f'</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="100" w:type="dxa"/><w:left w:w="180" w:type="dxa"/>'
                 f'<w:bottom w:w="100" w:type="dxa"/><w:right w:w="180" w:type="dxa"/></w:tblCellMar></w:tblPr>'
@@ -1041,12 +1041,12 @@ def to_pdf(doc, meta: Meta, image_bytes) -> bytes:
     def callout_flow(node, max_w):
         kind = (node.get("attrs") or {}).get("type")
         kind = kind if kind in ALLOWED_CALLOUTS else "info"
-        bg, ln, fg = CALLOUT_COLORS[kind]
+        bg, _line, fg = CALLOUT_COLORS[kind]
         inner = [para(f'<b>{ALLOWED_CALLOUTS[kind]}</b>', ParagraphStyle("cl", parent=body, fontName=bold, fontSize=9.5, leading=13,
                                                                          textColor=colors.HexColor("#" + fg), spaceAfter=2))]
         inner += blocks(node.get("content"), max_w - 24)
         t = Table([[inner]], colWidths=[max_w], hAlign="LEFT")
-        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#" + bg)), ("LINEBEFORE", (0, 0), (0, -1), 2.5, colors.HexColor("#" + ln)),
+        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#" + bg)),
                                ("LEFTPADDING", (0, 0), (-1, -1), 10), ("RIGHTPADDING", (0, 0), (-1, -1), 10),
                                ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
         return t
