@@ -4,7 +4,7 @@
 //   배포 명령:  npx wrangler deploy
 // 수동 배포도 같은 두 명령을 저장소 루트에서 실행하면 된다(처음 한 번 npx wrangler login).
 {
-  "name": "workwiki-demo",
+  "name": "workwiki",
   "compatibility_date": "2026-11-04",
   "observability": {
     "enabled": true
