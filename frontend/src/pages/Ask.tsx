@@ -115,27 +115,23 @@ function TurnView({ t }: { t: Turn }) {
   return (
     <article className="turn" aria-live="polite">
       <h2 className="turn-q">{t.q}{t.scope && <span className="turn-scope">{t.scope}</span>}</h2>
-      <section className="ask-answer">
+      {!(t.phase === 'done' && !t.answer && t.sources.length > 0 && !t.error) && <section className="ask-answer">
         <div className="ask-answer-head">
           <span className="ask-answer-label">{generating || t.phase === 'searching' ? '답변' : '찾은 근거'}</span>
-          {t.model && <span className="muted small">{t.model} · 이 PC의 로컬 모델</span>}
-          {t.semantic && <span className="muted small">낱말 + 의미 검색</span>}
+          {t.model && <span className="muted small">{t.model}</span>}
         </div>
-        {t.phase === 'searching' && <div className="ask-progress"><Loader2 size={15} className="spin" /> 권한 안의 공식 매뉴얼에서 근거 문단을 찾는 중…</div>}
-        {t.phase === 'writing' && !t.answer && <div className="ask-progress"><Loader2 size={15} className="spin" /> 근거 {t.sources.length}건을 읽고 답변을 쓰는 중…</div>}
+        {t.phase === 'searching' && <div className="ask-progress"><Loader2 size={15} className="spin" /> 근거 문단을 찾는 중…</div>}
+        {t.phase === 'writing' && !t.answer && <div className="ask-progress"><Loader2 size={15} className="spin" /> 답변을 쓰는 중…</div>}
         {t.answer && <AnswerText text={t.answer} onCite={cite} max={t.sources.length} />}
         {t.phase === 'writing' && t.answer && <span className="caret-blink" aria-hidden="true" />}
-        {t.phase === 'done' && !t.answer && t.sources.length > 0 && (
-          <p className="ask-extractive">질문과 가장 관련 있는 근거 문단 {t.sources.length}건입니다. 아래 문단을 확인하세요.</p>
-        )}
-        {t.phase === 'done' && t.sources.length === 0 && <p className="ask-extractive">{t.notice || '관련 문단을 찾지 못했습니다.'}</p>}
-        {t.notice && t.sources.length > 0 && <div className="hint hint-gray ask-notice"><span>{t.notice}</span></div>}
+        {t.phase === 'done' && !t.answer && !t.sources.length && <p className="ask-extractive">{t.notice || '관련 문단을 찾지 못했습니다.'}</p>}
+        {t.answer && t.notice && <div className="hint hint-gray ask-notice"><span>{t.notice}</span></div>}
         {t.error && <div className="hint hint-red ask-notice"><span>{t.error}</span></div>}
-        {t.phase === 'done' && t.answer && <p className="ask-disclaimer">자동으로 만든 답변입니다. 업무 처리 전 근거 문단과 원문을 꼭 확인하세요.</p>}
-      </section>
+        {t.phase === 'done' && t.answer && <p className="ask-disclaimer">자동 생성 답변입니다. 처리 전 근거 문단을 확인하세요.</p>}
+      </section>}
       {t.sources.length > 0 && (
         <section className="ask-sources">
-          <h3>근거 문단 <span className="muted">{t.sources.length}건 · 공식본</span></h3>
+          <h3>근거 문단 <span className="muted">{t.sources.length}건</span></h3>
           <ol className="src-list">{t.sources.map((s) => <SourceCard key={s.n} s={s} cited={t.cited.includes(s.n)} active={active === s.n} />)}</ol>
         </section>
       )}
@@ -215,20 +211,16 @@ export function Ask({ q: initialQ, manualId }: { q: string; manualId: number | n
       <PageHeader crumbs={[{ label: 'AI 질문' }]} />
       <div className="page ask-page">
         <div className="ask-wrap">
-          <div className="ask-intro">
-            <h1 className="page-title">매뉴얼에 질문하기</h1>
-            <p>게시된 공식 매뉴얼에서 근거 문단을 찾아 답합니다. 열람 권한이 없는 문서는 근거로 쓰지 않습니다.</p>
-            {ai && (
-              <p className="ask-mode">
-                {ai.mode === 'generate' && <><span className="st st-ok">답변 모델 연결됨</span><span className="muted small">{ai.chat_model}{ai.semantic ? ' · 의미 검색 사용' : ''}</span></>}
-                {ai.mode === 'extractive' && <><span className="st st-gray">근거 문단만</span><span className="muted small">{ai.notice}</span></>}
-                {ai.mode === 'off' && <><span className="st st-gray">사용 안 함</span><span className="muted small">{ai.notice}</span></>}
-              </p>
-            )}
-          </div>
+          {ai && (
+            <p className="ask-mode">
+              {ai.mode === 'generate' && <><span className="st st-ok">답변 모델 {ai.chat_model}</span><span className="muted small">공식본 근거로 답합니다</span></>}
+              {ai.mode === 'extractive' && <><span className="st st-gray">근거 문단만</span><span className="muted small">{ai.notice}</span></>}
+              {ai.mode === 'off' && <><span className="st st-gray">사용 안 함</span><span className="muted small">{ai.notice}</span></>}
+            </p>
+          )}
           <form className={cx('ask-form', off && 'disabled')} onSubmit={submit}>
             <textarea ref={inputRef} value={q} rows={2} maxLength={300} disabled={off} aria-label="질문"
-              placeholder="예: 대출 심사 시 소득 증빙이 필요한 경우는?"
+              placeholder="무엇이든 물어보세요. 예: 대출 심사 시 소득 증빙이 필요한 경우는?"
               onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit() } }} />
             <div className="ask-form-bar">
@@ -237,7 +229,6 @@ export function Ask({ q: initialQ, manualId }: { q: string; manualId: number | n
                 {manualId && <option value={`m${manualId}`}>이 문서만: {manualTitle || '선택한 문서'}</option>}
                 {tree.map((d) => <option key={d.id} value={String(d.id)}>{d.name} 문서</option>)}
               </select>
-              <span className="muted small hide-sm">Enter 보내기 · Shift+Enter 줄바꿈</span>
               {busy
                 ? <button type="button" className="btn" onClick={stop}><Square size={13} /> 멈추기</button>
                 : <button type="submit" className="btn btn-primary" disabled={off || !q.trim()}><SendHorizontal size={15} /> 질문</button>}
@@ -246,7 +237,7 @@ export function Ask({ q: initialQ, manualId }: { q: string; manualId: number | n
           {!turn && !off && (
             <div className="ask-suggest">
               <div className="ask-suggest-col">
-                <h3>이렇게 물어보세요</h3>
+                <h3>예시 질문</h3>
                 {EXAMPLES.map((x) => <button key={x} type="button" className="ask-example" onClick={() => { setQ(x); ask(x) }}>{x}</button>)}
               </div>
               {history.length > 0 && (

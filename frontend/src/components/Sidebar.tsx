@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronRight, FilePen, Home, MessageSquareText, Plus, Settings, Star } from 'lucide-react'
+import { ChevronRight, FilePen, Home, Plus, Settings, Star } from 'lucide-react'
 import { api } from '../api/client'
 import type { TreeDept } from '../api/types'
 import { useApp } from '../app-context'
@@ -63,7 +63,7 @@ function DeptNode({ d, expanded, toggle, activeManual, activeDept, onNavigate }:
 }
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { me, tree, isAdminAny, openNewManual, ai } = useApp()
+  const { me, tree, isAdminAny, openNewManual } = useApp()
   const { parts, query } = useRoute()
   const manualId = parts[0] === 'm' ? Number(parts[1]) : null
   const deptId = parts[0] === 'd' ? Number(parts[1]) : null
@@ -95,9 +95,6 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           <Link to="/" className={cx('nav-item', isHome && !homeTab && 'active')} onNavigate={onClose}><Home size={15} /> <span>홈</span></Link>
           <Link to="/?tab=fav" className={cx('nav-item', isHome && homeTab === 'fav' && 'active')} onNavigate={onClose}><Star size={15} /> <span>즐겨찾기</span></Link>
           <Link to="/?tab=mine" className={cx('nav-item', isHome && homeTab === 'mine' && 'active')} onNavigate={onClose}><FilePen size={15} /> <span>내 작업</span></Link>
-          {ai && ai.mode !== 'off' && (
-            <Link to="/ask" className={cx('nav-item', section === 'ask' && 'active')} onNavigate={onClose}><MessageSquareText size={15} /> <span>AI 질문</span></Link>
-          )}
         </nav>
         <div className="sb-scroll">
           <div className="sb-label">

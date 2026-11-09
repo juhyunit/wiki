@@ -83,9 +83,9 @@ export function Search(p: Params) {
         {err && <ErrorBox error={err} />}
         {!busy && data && (
           <div className="result-count-row">
-            <p className="result-count">{data.total ? `${data.total}건 · 제목 일치 › 태그 › 본문 순` : `‘${p.q}’에 맞는 매뉴얼이 없습니다. 다른 낱말로 찾아보세요.`}</p>
+            <p className="result-count">{data.total ? `${data.total}건` : `‘${p.q}’에 맞는 매뉴얼이 없습니다. 다른 낱말로 찾아보세요.`}</p>
             {ai && ai.mode !== 'off' && (
-              <Link to={`/ask?q=${encodeURIComponent(p.q)}`} className="link-btn small">문장으로 물어보기: AI 질문에서 근거 문단과 함께 답 받기 →</Link>
+              <Link to={`/ask?q=${encodeURIComponent(p.q)}`} className="link-btn small">AI 질문으로 묻기 →</Link>
             )}
           </div>
         )}
@@ -108,7 +108,7 @@ export function Search(p: Params) {
             ))}
           </div>
         )}
-        {!p.q && <p className="muted search-help">위쪽 검색창에 검색어를 넣으세요. 제목·태그·본문에서 낱말 일부만 넣어도 찾습니다. 권한이 없는 부서 한정 문서는 결과에 나오지 않습니다.</p>}
+        {!p.q && <p className="muted search-help">제목·태그·본문에서 낱말 일부로도 찾습니다.</p>}
       </div>
     </>
   )

@@ -121,15 +121,8 @@ function InfoModal({ m, onClose, onSaved }: { m: ManualDetail; onClose: () => vo
     <div className="kv"><span>{label}</span><div>{v}</div></div>
   )
   return (
-    <Modal title="문서 정보" onClose={onClose} width={560}
+    <Modal title="문서 설정" onClose={onClose} width={560}
       footer={canEdit || canManage ? <><button className="btn" onClick={onClose}>닫기</button><button className="btn btn-primary" onClick={save}>저장</button></> : <button className="btn" onClick={onClose}>닫기</button>}>
-      <div className="kv-list">
-        {ro('문서 번호', m.manual_no)}
-        {ro('담당 부서', m.department_name)}
-        {ro('판번', m.edition ? `제${m.edition}판 (v${m.version_no}) · ${fmtDate(m.published_at)} 게시` : '아직 게시되지 않음')}
-        {ro('최근 30일 조회', `${m.views_30d}회`)}
-      </div>
-      <hr className="sep" />
       {canManage ? (
         <div className="form-grid">
           <label className="field"><span>업무분류</span>
@@ -178,7 +171,6 @@ function InfoModal({ m, onClose, onSaved }: { m: ManualDetail; onClose: () => vo
       {canEdit && (
         <label className="field"><span>태그 (쉼표로 구분)</span><input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="예: 연차, 휴가, 근태" /></label>
       )}
-      {canManage && <p className="muted small">담당자·열람 범위·검토 주기는 부서 관리자만 바꿀 수 있습니다. 바꾼 내용은 감사 로그에 남습니다.</p>}
       {err && <div className="form-error">{err}</div>}
     </Modal>
   )
@@ -213,7 +205,7 @@ function MoreMenu({ m, reload }: { m: ManualDetail; reload: () => void }) {
       <button className="icon-btn" onClick={() => setOpen(!open)} aria-label="더 보기"><MoreHorizontal size={18} /></button>
       {open && (
         <div className="popover menu-pop right">
-          <button className="menu-item" onClick={() => { setOpen(false); setInfo(true) }}><Info size={15} /> 문서 정보{m.perms.manage ? '·설정' : ''}</button>
+          {(m.perms.edit || m.perms.manage) && <button className="menu-item" onClick={() => { setOpen(false); setInfo(true) }}><Info size={15} /> 문서 설정</button>}
           {m.perms.force_unlock && lockedByOther && (
             <button className="menu-item" onClick={async () => {
               setOpen(false)
@@ -365,7 +357,7 @@ export function ManualView({ id, view, anchor = null, hl = null }: { id: number;
                   </span>
                 </div>
               ) : (
-                <div className="hint hint-amber"><Clock size={16} /><span>v{m.pending.version_no} 게시를 요청했습니다. 부서 관리자가 게시하면 공식본이 바뀝니다.</span></div>
+                <div className="hint hint-amber"><Clock size={16} /><span>v{m.pending.version_no} 게시를 요청했습니다.</span></div>
               )
             )}
             {m.rejection && m.perms.view_work && !m.pending && (

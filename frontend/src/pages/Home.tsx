@@ -23,7 +23,7 @@ export function Home() {
 
   return (
     <>
-      <PageHeader crumbs={[{ label: '홈' }, { label: TITLES[tab] }]} />
+      <PageHeader crumbs={[{ label: '홈' }]} />
       <div className="page">
         {loading && !data && <Spinner />}
         {error && <ErrorBox error={error} onRetry={reload} />}

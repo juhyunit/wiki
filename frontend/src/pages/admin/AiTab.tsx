@@ -111,14 +111,13 @@ export function AiTab() {
         <div className="kpi"><span>의미 검색 임베딩</span><strong className="kpi-text">{form.embed_model ? `${prog.done} / ${prog.total} 문단` : '사용 안 함'}</strong></div>
         <div className="kpi"><span>최근 7일 질문</span><strong>{data.questions_7d}</strong></div>
       </div>
-      {data.notice && data.mode !== 'generate' && <div className="hint hint-amber"><span>{data.notice}</span></div>}
 
       <section className="panel">
-        <div className="panel-head"><h2>모델 설정 <span className="muted small">바꾼 내용은 감사 로그에 남습니다</span></h2></div>
+        <div className="panel-head"><h2>모델 설정</h2></div>
         <div className="form-grid ai-form">
           <label className="field full check-field">
             <span className="check"><input type="checkbox" checked={form.enabled} onChange={(e) => set('enabled', e.target.checked)} /> AI 질의응답 사용</span>
-            <small className="muted">끄면 직원 화면에서 'AI 질문'이 사라집니다. 모델을 빼려면 아래 모델을 '사용 안 함'으로 두세요(근거 문단 찾기는 계속 동작).</small>
+            <small className="muted">끄면 'AI 질문'이 사라집니다. 모델만 빼려면 아래에서 '사용 안 함'.</small>
           </label>
           <label className="field"><span>모델 서버 종류</span>
             <select value={form.provider} onChange={(e) => set('provider', e.target.value)}>
@@ -127,11 +126,11 @@ export function AiTab() {
             </select></label>
           <label className="field"><span>모델 서버 주소</span>
             <input value={form.base_url} onChange={(e) => set('base_url', e.target.value)} placeholder="http://127.0.0.1:11434" />
-            <small className="muted">이 PC(127.0.0.1)나 사내망 주소만 쓸 수 있습니다. 외부 인터넷 API는 막혀 있습니다.</small></label>
+            <small className="muted">이 PC·사내망 주소만(외부 API 차단)</small></label>
           <ModelPicker label="답변 모델(생성형)" value={form.chat_model} onChange={(v) => set('chat_model', v)} presets={data.presets.chat} installed={installed}
-            help="근거 문단을 읽고 답을 씁니다. '사용 안 함'이면 근거 문단만 보여 줍니다." />
+            help="'사용 안 함'이면 근거 문단만 보여 줍니다." />
           <ModelPicker label="임베딩 모델(의미 검색)" value={form.embed_model} onChange={(v) => set('embed_model', v)} presets={data.presets.embed} installed={installed}
-            help="낱말이 달라도 뜻이 비슷한 문단을 찾습니다. '사용 안 함'이면 낱말 검색만 합니다." />
+            help="'사용 안 함'이면 낱말 검색만 합니다." />
           <label className="field"><span>근거 문단 수</span>
             <select value={form.top_k} onChange={(e) => set('top_k', Number(e.target.value))}>{[3, 4, 5, 6, 8, 10].map((n) => <option key={n} value={n}>{n}개</option>)}</select></label>
           <label className="field"><span>답변 시간 제한</span>
@@ -147,7 +146,7 @@ export function AiTab() {
         <section className="panel">
           <div className="panel-head"><h2>설치된 모델 <span className="muted small">{form.provider === 'ollama' ? 'Ollama' : 'OpenAI 호환 서버'}</span></h2>
             <button className="btn btn-sm" onClick={load}><RefreshCw size={13} /> 새로고침</button></div>
-          {!st.reachable && <p className="muted small">{st.error || '모델 서버에 연결하지 못했습니다.'} 아래 '설치 안내'를 참고하세요.</p>}
+          {!st.reachable && <p className="muted small">{st.error || '모델 서버에 연결하지 못했습니다.'}</p>}
           {st.reachable && (st.models.length ? (
             <div className="table-wrap"><table className="table dense">
               <thead><tr><th>모델</th><th>크기</th><th>쓰임</th><th /></tr></thead>
@@ -167,7 +166,7 @@ export function AiTab() {
         </section>
 
         <section className="panel">
-          <div className="panel-head"><h2>모델 내려받기 <span className="muted small">Ollama · 허용 라이선스 모델</span></h2></div>
+          <div className="panel-head"><h2>모델 내려받기</h2></div>
           {data.pull.running ? (
             <div className="pull-box">
               <div className="small"><strong className="mono">{data.pull.model}</strong> {data.pull.status} {pct ? `${pct}%` : ''}</div>
@@ -193,7 +192,7 @@ export function AiTab() {
             <input value={pullName} onChange={(e) => setPullName(e.target.value)} placeholder="다른 모델 이름(예: qwen3:1.7b)" maxLength={100} aria-label="내려받을 모델 이름" />
             <button className="btn" disabled={!pullName.trim() || !!data.pull.running || !st.reachable || form.provider !== 'ollama'} onClick={() => pull(pullName)}>내려받기</button>
           </div>
-          <p className="muted small">모델 라이선스가 사내 허용 목록(MIT·BSD·Apache-2.0 등) 안에 있는지 확인하고 받으세요. Llama·Gemma·EXAONE 등은 별도 라이선스라 기본 추천에서 뺐습니다.</p>
+          <p className="muted small">직접 받는 모델은 라이선스(MIT·BSD·Apache-2.0 등)를 확인하세요.</p>
         </section>
       </div>
 
@@ -204,7 +203,7 @@ export function AiTab() {
       </section>
 
       <section className="panel">
-        <div className="panel-head"><h2>최근 질문 <span className="muted small">답이 없던 질문은 매뉴얼 보완 후보입니다</span></h2></div>
+        <div className="panel-head"><h2>최근 질문 <span className="muted small">근거 0건은 매뉴얼 보완 후보</span></h2></div>
         {data.logs.length ? (
           <div className="table-wrap"><table className="table dense">
             <thead><tr><th>시각</th><th>사용자</th><th>질문</th><th>방식</th><th className="num">근거</th><th className="num">소요</th></tr></thead>
@@ -223,7 +222,7 @@ export function AiTab() {
       </section>
 
       <section className="panel">
-        <div className="panel-head"><h2>설치 안내 <span className="muted small">모델은 이 PC에서만 돌아가고 문서는 밖으로 나가지 않습니다</span></h2></div>
+        <div className="panel-head"><h2>설치 안내</h2></div>
         <ol className="guide small">
           <li><strong>Ollama 설치</strong>(MIT): 인터넷이 되는 PC에서 ollama.com의 Windows 설치 파일을 받아 이 PC에 설치합니다. 설치하면 <span className="mono">http://127.0.0.1:11434</span>에서 바로 동작합니다.</li>
           <li><strong>모델 받기</strong>: 위 '모델 내려받기'에서 <span className="mono">qwen3:4b</span>(답변)와 <span className="mono">bge-m3</span>(의미 검색)를 받습니다. 저사양 PC는 <span className="mono">qwen3:1.7b</span>.</li>

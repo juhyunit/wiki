@@ -33,7 +33,7 @@ export function DocInfoCard({ m }: { m: ManualDetail }) {
     : m.published ? `제${m.edition}판` : '미게시'
   const editionSub = isWork ? (m.published ? `공식본 제${m.edition}판` : '게시 전') : m.published ? `v${m.version_no}` : ''
   const fields: { k: string; v: React.ReactNode; sub?: React.ReactNode; key?: boolean; cls?: string }[] = [
-    { k: '문서 책임자', v: m.owner_name || '-', sub: !m.owner_active ? <span className="text-red">재지정 필요</span> : m.department_name, key: true },
+    { k: '문서 책임자', v: m.owner_name || '-', sub: !m.owner_active ? <span className="text-red">재지정 필요</span> : null, key: true },
     { k: '다음 검토일', v: m.next_review_date || '-', key: true, cls: n != null && n < 0 ? 'text-red' : undefined,
       sub: n == null ? null : n < 0 ? `${-n}일 지남` : `D-${n}` },
     { k: '검토 주기', v: `${m.review_cycle_months}개월` },
@@ -97,7 +97,7 @@ export function LinkedDocs({ id, view, canEdit, reloadKey }: { id: number; view:
     <section className="doc-links" aria-label="연결된 문서">
       <h3 className="doc-links-title">연결된 문서</h3>
       {empty ? (
-        <p className="muted small dl-empty">아직 연결된 문서가 없습니다. 편집 화면에서 <strong>문서 링크</strong> 버튼이나 <kbd>[[</kbd>를 입력해 다른 매뉴얼을 연결하면 양쪽 문서에 함께 표시됩니다.</p>
+        <p className="muted small dl-empty">없음 · 편집에서 ‘문서 링크’ 또는 <kbd>[[</kbd>로 연결합니다.</p>
       ) : (
         <div className="doc-links-grid">
           <div>
@@ -166,7 +166,7 @@ export function ExportMenu({ m }: { m: ManualDetail }) {
               <span className="export-desc">{x.desc}</span>
             </button>
           ))}
-          <div className="pop-foot muted small">{api.mode === 'demo' ? '데모의 PDF는 인쇄 창의 ‘PDF로 저장’으로 만듭니다.' : '내려받은 기록은 감사 로그에 남습니다.'}</div>
+          {api.mode === 'demo' && <div className="pop-foot muted small">데모의 PDF는 인쇄 창의 ‘PDF로 저장’으로 만듭니다.</div>}
         </div>
       )}
     </div>

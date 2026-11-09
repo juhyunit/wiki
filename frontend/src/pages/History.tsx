@@ -75,7 +75,7 @@ export function History({ id, qa, qb }: { id: number; qa?: string | null; qb?: s
         <div className="page-title-row">
           <div>
             <h1 className="page-title">버전 이력</h1>
-            <p className="muted">{data.manual.manual_no} {data.manual.title} · 버전은 지워지지 않고, 복원도 새 버전으로 남습니다.</p>
+            <p className="muted">{data.manual.manual_no} {data.manual.title}</p>
           </div>
         </div>
         <div className="history-grid">

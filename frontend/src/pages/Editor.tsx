@@ -281,8 +281,7 @@ function DocLinkPicker({ currentId, onPick, onClose }: { currentId: number; onPi
           </button>
         ))}
       </div>
-      <p className="muted small" style={{ margin: '10px 0 0' }}>고른 글자가 있으면 그 글자에, 없으면 문서 제목으로 링크를 넣습니다. 링크한 문서에는 ‘이 문서를 참조하는 문서’로 표시됩니다.
-        열람 권한이 없는 직원에게는 제목 없이 ‘열람 권한이 없는 문서’로 보입니다.</p>
+      <p className="muted small" style={{ margin: '10px 0 0' }}>고른 글자가 있으면 그 글자에, 없으면 문서 제목으로 링크합니다.</p>
     </Modal>
   )
 }
@@ -690,7 +689,6 @@ export function EditorPage({ id }: { id: number }) {
           <input className="doc-title-input" value={title} onChange={(e) => onTitleChange(e.target.value)} placeholder="매뉴얼 제목" maxLength={200} aria-label="제목" />
           <div className="editor-meta muted small">
             {detail.manual_no} · {detail.department_name} · {work.base_version_no ? `v${work.base_version_no}에서 수정 중` : '새 매뉴얼'}
-            {detail.published && ` · 직원들은 게시 전까지 제${detail.edition}판을 봅니다`}
           </div>
           <EditorBody id={id} initial={work.content_json} onChange={onDocChange} onReady={setEditor} onDocLink={() => setDocLink(true)} />
         </div>

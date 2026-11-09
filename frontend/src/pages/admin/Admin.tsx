@@ -159,7 +159,6 @@ function Reviews() {
       <section className="panel">
         <div className="panel-head"><h2>검토 지연·예정 <span className="muted small">60일 이내</span></h2></div>
         {data.due.length ? <ReviewTable items={data.due} /> : <Empty>없습니다.</Empty>}
-        <p className="muted small pad">운영 전환 시 검토 지연 목록은 월 1회 부서 관리자에게 요약 메일로 보냅니다(기획서 2.1).</p>
       </section>
     </>
   )
@@ -172,7 +171,7 @@ function Categories() {
   const cur = depts.find((d) => d.id === open)
   return (
     <section className="panel">
-      <div className="panel-head"><h2>업무분류 관리 <span className="muted small">부서 › 업무분류 › 매뉴얼 3단 구조</span></h2></div>
+      <div className="panel-head"><h2>업무분류 관리</h2></div>
       <div className="table-wrap"><table className="table dense">
         <thead><tr><th>부서</th><th>업무분류</th><th></th></tr></thead>
         <tbody>{depts.map((d) => (
@@ -431,7 +430,7 @@ function HrTab() {
   return (
     <>
       <section className="panel">
-        <div className="panel-head"><h2>인사 데이터 동기화 <span className="muted small">운영 전환 시 매일 예약 작업으로 자동 실행</span></h2></div>
+        <div className="panel-head"><h2>인사 데이터 동기화</h2></div>
         <div className="pad">
           <p className="small">인사 시스템에서 내려받은 CSV를 올리면 <strong>새 직원 추가 · 부서 이동 · 퇴사자 비활성화</strong>를 미리 보여 주고 적용합니다. 계정은 지우지 않고 비활성화만 합니다.
             비활성화 대상이 전체의 <strong>5%</strong>를 넘으면 인사 파일 오류로 보고 적용을 멈춥니다.</p>
