@@ -6,7 +6,7 @@
 - 화면: React + TypeScript + TipTap(MIT) 편집기 — 빌드된 화면이 `backend/app/static`에 들어 있어 **Node.js 없이 실행**됩니다.
 - 서버: Python FastAPI + SQLite(파일 1개) — 데이터는 `backend/data/` 폴더에 쌓입니다.
 - 라이선스: 사용한 구성요소는 모두 MIT·BSD·Apache-2.0·ISC·MIT-CMU·OFL(Inter·Noto Sans KR 글꼴) 계열입니다(기획서 12장 허용 목록).
-- 디자인: 금융기관 업무시스템 기준 — 밝은 회색·흰 바탕, 무채색 + 네이비·블루 포인트 하나, 1px 테두리·6~8px 모서리, 그림자는 떠 있는 메뉴에만. 글꼴은 Inter(영문·숫자)와 Noto Sans KR(한글)을 번들합니다.
+- 디자인: 은행 내부 업무 시스템 기준 — 네이비(#263B63) 상단 바·선택 메뉴·제목, 오렌지(#D97736)는 즐겨찾기·게시 대기·중요 표시에만, 바탕 #F7F8FA, 문서 화면은 카드 없는 흰 편집기형. 모서리 4px, 그림자는 떠 있는 메뉴에만. 글꼴은 Inter(영문·숫자)와 Noto Sans KR(한글)을 번들합니다.
 
 ---
 
