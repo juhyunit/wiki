@@ -818,23 +818,16 @@ mark { background: #fbe2cf; color: inherit; padding: 0 1px; }
   .bar-ask { padding: 0 8px; }
 }
 
-/* ------------------------------------------------------------ 홈: 지식 연결 그래프 */
-.kg { margin-bottom: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
-.kg-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; padding: 8px 10px 8px 16px; border-bottom: 1px solid var(--line-soft); }
-.kg-head h2 { margin: 0; font-size: 14px; font-weight: 600; color: var(--primary); }
-.kg-count { font-size: 12.5px; color: var(--t3); }
-.kg-tools { display: flex; align-items: center; gap: 4px; margin-left: auto; }
-.kg-tools .check { margin-right: 8px; color: var(--t2); }
-.kg-btn { min-width: 28px; height: 26px; padding: 0 6px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--t2); font-size: 14px; line-height: 1; }
-.kg-btn.wide { font-size: 12.5px; padding: 0 8px; }
-.kg-btn:hover { background: var(--hover); color: var(--t1); }
-.kg-canvas { position: relative; height: 340px; background: var(--surface); }
+/* ------------------------------------------------------------ 홈: Insight Network(상자 없이 바탕 위에) */
+.kg { position: relative; margin: 0 0 14px; }
+.kg-title { position: absolute; top: 4px; left: 0; z-index: 1; margin: 0; font-size: 13px; font-weight: 600; color: var(--primary); pointer-events: none; }
+.kg-canvas { position: relative; height: 380px; }
 .kg-canvas canvas { display: block; touch-action: pan-y; cursor: grab; }
 .kg-canvas.pointing canvas { cursor: pointer; }
 .kg-loading { position: absolute; inset: 0; display: grid; place-items: center; }
-.kg-tip { position: absolute; left: 12px; bottom: 10px; display: flex; flex-direction: column; gap: 1px; max-width: calc(100% - 24px); padding: 6px 10px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); font-size: 12.5px; color: var(--t3); pointer-events: none; }
+.kg-tip { position: absolute; left: 0; bottom: 6px; display: flex; flex-direction: column; gap: 1px; max-width: calc(100% - 24px); padding: 6px 10px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); font-size: 12.5px; color: var(--t3); pointer-events: none; }
 .kg-tip strong { font-size: 13.5px; font-weight: 600; color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (max-width: 880px) { .kg-canvas { height: 280px; } }
+@media (max-width: 880px) { .kg-canvas { height: 320px; } }
 
 /* ------------------------------------------------------------ 반응형 */
 .hide-md { }

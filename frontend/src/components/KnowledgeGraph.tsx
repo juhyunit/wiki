@@ -1,19 +1,21 @@
-// 홈 '지식 연결' 그래프(옵시디언 그래프 보기 방식): 부서 · 매뉴얼 · 태그를 점으로, 소속·태그·문서 링크를 선으로.
+// 홈 'Insight Network' 그래프(옵시디언 그래프 보기 방식): 부서 · 매뉴얼 · 태그를 점으로, 소속·태그·문서 링크를 선으로.
 // 외부 라이브러리 없이 캔버스에 힘-배치(밀어내기 + 스프링 + 중심 끌림)로 그린다. 볼 수 있는 매뉴얼만 서버가 준다.
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import type { GraphData, GraphNode } from '../api/types'
 import { navigate } from '../lib/router'
-import { cx, storage } from '../lib/util'
+import { cx } from '../lib/util'
 
 type SimNode = GraphNode & { x: number; y: number; vx: number; vy: number; r: number; deg: number; fixed?: boolean }
 type SimEdge = { s: SimNode; t: SimNode; kind: 'dept' | 'tag' | 'link' }
 
 // 첫 번째 참고 이미지의 회색조를 바탕으로, 부서·선택·문서 링크에만 브랜드 네이비를 쓴다(styles.css 토큰과 같은 값)
+// 기본은 첫 번째 참고 이미지의 회색조. 많이 이어진 점일수록 청록 → 파스텔 주황(이 그래프에서만 쓰는 데이터 색)
 const C = {
-  edge: '#e1e5eb', edgeLink: '#a9b8d3', tag: '#c3cad5', manual: '#3b475a', manualDraft: '#a6afbd',
-  dept: '#263b63', hi: '#263b63', hiEdge: '#263b63', label: '#3b475a', muted: '#758196', halo: 'rgba(255,255,255,0.92)',
+  edge: '#dde2e9', edgeLink: '#b7c3d6', hi: '#263b63', hiEdge: '#263b63', label: '#3b475a', halo: 'rgba(247,248,250,0.92)',
 }
+const DENSITY = ['#c6ccd5', '#4a5466', '#5aa9a0', '#e9a06c'] // 적음 → 보통 → 많음 → 가장 많음
+const densityColor = (n: { deg: number }, cut: number[]) => DENSITY[n.deg >= cut[2] ? 3 : n.deg >= cut[1] ? 2 : n.deg >= cut[0] ? 1 : 0]
 const LEN = { dept: 80, tag: 40, link: 120 }
 const STRENGTH = { dept: 0.06, tag: 0.09, link: 0.025 }
 
@@ -50,11 +52,16 @@ function build(data: GraphData, w: number, h: number) {
       n.y = ms.reduce((a, m) => a + m.y, 0) / ms.length + rnd() * 30
     }
   }
-  for (const n of byId.values()) n.r = n.kind === 'dept' ? 7 + Math.min(5, n.deg * 0.35) : n.kind === 'manual' ? 3.6 + Math.min(3, n.deg * 0.3) : 2.4
-  return { nodes: [...byId.values()], edges, byId }
+  // 크기는 종류가 아니라 이어진 수로만(부서가 혼자 커지지 않게, 차이는 작게)
+  for (const n of byId.values()) n.r = 2.4 + Math.min(3.2, Math.sqrt(n.deg) * 0.9)
+  // 연결 밀도 구간: 이어진 수 분포의 50·80·94% 지점
+  const degs = [...byId.values()].map((n) => n.deg).sort((a, b) => a - b)
+  const q = (p: number) => degs[Math.min(degs.length - 1, Math.floor(degs.length * p))] || 1
+  const cut = [Math.max(2, q(0.5)), Math.max(3, q(0.8)), Math.max(4, q(0.94))]
+  return { nodes: [...byId.values()], edges, byId, cut }
 }
 
-function tick(nodes: SimNode[], edges: SimEdge[], alpha: number, aspect = 1) {
+function tick(nodes: SimNode[], edges: SimEdge[], alpha: number) {
   // 밀어내기(점이 수백 개 수준이라 모든 쌍을 계산)
   for (let i = 0; i < nodes.length; i++) {
     const a = nodes[i]
@@ -80,9 +87,9 @@ function tick(nodes: SimNode[], edges: SimEdge[], alpha: number, aspect = 1) {
     e.t.vx -= fx; e.t.vy -= fy
   }
   for (const n of nodes) {
-    // 가로로 긴 칸이면 좌우로 더 퍼지게 가로 끌림을 약하게
-    n.vx -= n.x * (0.014 / Math.max(1, aspect)) * alpha
-    n.vy -= n.y * 0.016 * alpha
+    // 가운데로 같은 힘으로 끌어 전체가 둥근 구 모양이 되게
+    n.vx -= n.x * 0.018 * alpha
+    n.vy -= n.y * 0.018 * alpha
     if (n.fixed) { n.vx = 0; n.vy = 0; continue }
     n.vx *= 0.6
     n.vy *= 0.6
@@ -93,11 +100,10 @@ function tick(nodes: SimNode[], edges: SimEdge[], alpha: number, aspect = 1) {
 
 export function KnowledgeGraph() {
   const [data, setData] = useState<GraphData | null>(null)
-  const [showTags, setShowTags] = useState(() => storage.get('ww:graph-tags') !== '0')
   const [hover, setHover] = useState<SimNode | null>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const sim = useRef<{ nodes: SimNode[]; edges: SimEdge[]; byId: Map<string, SimNode> } | null>(null)
+  const sim = useRef<{ nodes: SimNode[]; edges: SimEdge[]; byId: Map<string, SimNode>; cut: number[] } | null>(null)
   const view = useRef({ x: 0, y: 0, k: 1, w: 0, h: 0 })
   const alpha = useRef(1)
   const hoverRef = useRef<SimNode | null>(null)
@@ -106,15 +112,7 @@ export function KnowledgeGraph() {
   useEffect(() => {
     api.graph().then(setData).catch(() => setData({ nodes: [], edges: [] }))
   }, [])
-  const shown = useMemo<GraphData | null>(() => {
-    if (!data) return null
-    if (showTags) return data
-    return { nodes: data.nodes.filter((n) => n.kind !== 'tag'), edges: data.edges.filter((e) => e.kind !== 'tag') }
-  }, [data, showTags])
-  const counts = useMemo(() => data ? {
-    manuals: data.nodes.filter((n) => n.kind === 'manual').length,
-    links: data.edges.filter((e) => e.kind === 'link').length,
-  } : null, [data])
+  const shown = data
 
   // 이웃(마우스를 올린 점과 이어진 점·선): 시뮬레이션을 만들 때 함께 만든다
   const neighborsRef = useRef(new Map<SimNode, Set<SimNode>>())
@@ -145,8 +143,7 @@ export function KnowledgeGraph() {
     }
     for (const n of s.nodes) {
       ctx.globalAlpha = on(n) ? 1 : 0.25
-      ctx.fillStyle = n === hv || (hv && near!.has(n) && n.kind !== 'tag') ? C.hi
-        : n.kind === 'dept' ? C.dept : n.kind === 'manual' ? (n.published ? C.manual : C.manualDraft) : C.tag
+      ctx.fillStyle = n === hv || (hv && near!.has(n)) ? C.hi : densityColor(n, s.cut)
       ctx.beginPath()
       ctx.arc(n.x, n.y, n.r + (n === hv ? 1.5 : 0), 0, Math.PI * 2)
       ctx.fill()
@@ -156,23 +153,21 @@ export function KnowledgeGraph() {
     ctx.textBaseline = 'top'
     ctx.lineJoin = 'round'
     for (const n of s.nodes) {
-      const always = n.kind === 'dept' || (n.kind === 'manual' && k >= 1.9) || (n.kind === 'tag' && k >= 2.8)
       const focus = hv && (n === hv || (near!.has(n) && n.kind !== 'tag'))
-      if (!(always && !hv) && !focus) continue
-      const size = (n === hv ? 12.5 : n.kind === 'dept' ? 11.5 : 11) / k
-      ctx.font = `${n.kind === 'dept' || n === hv ? 600 : 400} ${size}px ui-sans-serif, -apple-system, 'Segoe UI', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif`
+      if (!focus) continue
+      const size = (n === hv ? 12.5 : 11) / k
+      ctx.font = `${n === hv ? 600 : 400} ${size}px ui-sans-serif, -apple-system, 'Segoe UI', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif`
       const text = n.kind === 'tag' ? `#${n.label}` : n.label
       ctx.globalAlpha = 1
       ctx.strokeStyle = C.halo
       ctx.lineWidth = 3 / k
       ctx.strokeText(text, n.x, n.y + n.r + 3 / k)
-      ctx.fillStyle = n === hv ? C.hi : n.kind === 'dept' ? C.dept : C.label
+      ctx.fillStyle = n === hv ? C.hi : C.label
       ctx.fillText(text, n.x, n.y + n.r + 3 / k)
     }
     ctx.globalAlpha = 1
   }
 
-  const aspectOf = () => Math.min(3, Math.max(1, view.current.w / Math.max(1, view.current.h)))
   // 그래프 전체가 캔버스에 꽉 차게 확대·이동(이름이 들어갈 여백 포함)
   const fitView = () => {
     const s = sim.current
@@ -221,19 +216,19 @@ export function KnowledgeGraph() {
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     alpha.current = 1
     if (reduce) {
-      for (let i = 0; i < 300; i++) tick(sim.current.nodes, sim.current.edges, 1 - i / 300, aspectOf())
+      for (let i = 0; i < 300; i++) tick(sim.current.nodes, sim.current.edges, 1 - i / 300)
       alpha.current = 0
       draw()
     } else {
       // 대부분은 화면에 그리기 전에 미리 계산하고, 마지막 정리만 움직임으로 보여 준다
-      for (let i = 0; i < 260; i++) tick(sim.current.nodes, sim.current.edges, Math.max(0.12, 1 - i / 260), aspectOf())
+      for (let i = 0; i < 260; i++) tick(sim.current.nodes, sim.current.edges, Math.max(0.12, 1 - i / 260))
       alpha.current = 0.12
     }
     fitView()
     draw()
     const loop = () => {
       if (alpha.current > 0.02 && sim.current) {
-        tick(sim.current.nodes, sim.current.edges, alpha.current, aspectOf())
+        tick(sim.current.nodes, sim.current.edges, alpha.current)
         alpha.current *= 0.985
         if (!drag.current) fitView()
         draw()
@@ -326,35 +321,15 @@ export function KnowledgeGraph() {
     cv.addEventListener('wheel', wheel, { passive: false })
     return () => cv.removeEventListener('wheel', wheel)
   }, [shown])
-  const zoom = (f: number) => {
-    const v = view.current
-    v.k = Math.min(4, Math.max(0.4, v.k * f))
-    v.x *= f
-    v.y *= f
-    draw()
-  }
-  const reset = () => {
-    fitView()
-    draw()
-  }
 
   if (data && !data.nodes.length) return null
   return (
-    <section className="kg" aria-label="지식 연결">
-      <div className="kg-head">
-        <h2>지식 연결</h2>
-        {counts && <span className="kg-count">매뉴얼 {counts.manuals} · 문서 링크 {counts.links}</span>}
-        <div className="kg-tools">
-          <label className="check small"><input type="checkbox" checked={showTags} onChange={(e) => { setShowTags(e.target.checked); storage.set('ww:graph-tags', e.target.checked ? '1' : '0') }} /> 태그</label>
-          <button type="button" className="kg-btn" onClick={() => zoom(1.25)} aria-label="확대" title="확대">+</button>
-          <button type="button" className="kg-btn" onClick={() => zoom(0.8)} aria-label="축소" title="축소">−</button>
-          <button type="button" className="kg-btn wide" onClick={reset} title="처음 크기">맞춤</button>
-        </div>
-      </div>
+    <section className="kg" aria-label="Insight Network">
+      <h2 className="kg-title">Insight Network</h2>
       <div className={cx('kg-canvas', hover && 'pointing')} ref={wrapRef}>
         <canvas ref={canvasRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
           onPointerLeave={() => { if (!drag.current) setHover(null) }} role="img"
-          aria-label={counts ? `매뉴얼 ${counts.manuals}개와 문서 링크 ${counts.links}개의 연결 그림` : '지식 연결 그림'} />
+          aria-label="매뉴얼·부서·태그의 연결 그림" />
         {!data && <div className="kg-loading muted small">불러오는 중…</div>}
         {hover && (
           <div className="kg-tip">
