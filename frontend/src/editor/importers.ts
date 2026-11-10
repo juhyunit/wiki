@@ -1,6 +1,6 @@
 // Markdown·HTML 파일 가져오기: 파일 → 편집기에 넣을 HTML.
 // 편집기(TipTap)는 허용한 노드·마크만 남기고, 저장하면 서버가 JSON에서 HTML을 다시 만든다(클라이언트 HTML은 저장하지 않음).
-// WorkWiki에서 내보낸 파일(머리말·주의/중요/참고 박스·체크리스트·그림)은 그대로 돌아오게 맞춘다.
+// wikiLink에서 내보낸 파일(머리말·주의/중요/참고 박스·체크리스트·그림)은 그대로 돌아오게 맞춘다.
 import { marked } from 'marked'
 import { cleanPastedHTML } from './extensions'
 
@@ -29,7 +29,7 @@ function frontMatter(src: string): { body: string; title?: string } {
   return { body: src.slice(m[0].length), title }
 }
 
-// 붙여넣기 정리 전에 WorkWiki 고유 구조(박스·체크리스트·그림 캡션·내부 링크)를 편집기가 읽는 모양으로 바꾼다
+// 붙여넣기 정리 전에 wikiLink 고유 구조(박스·체크리스트·그림 캡션·내부 링크)를 편집기가 읽는 모양으로 바꾼다
 function normalize(doc: Document) {
   doc.querySelectorAll('.callout-label').forEach((n) => n.remove())
   doc.querySelectorAll('.table-wrap').forEach((w) => w.replaceWith(...Array.from(w.childNodes)))
@@ -95,7 +95,7 @@ export async function fileToEditorHtml(file: File): Promise<{ html: string; titl
     html = text
   }
   const doc = new DOMParser().parseFromString(html, 'text/html')
-  // WorkWiki에서 내보낸 HTML이면 본문(.prose)만 가져온다(제목·문서 정보 표는 편집기 머리에 따로 있음)
+  // wikiLink에서 내보낸 HTML이면 본문(.prose)만 가져온다(제목·문서 정보 표는 편집기 머리에 따로 있음)
   const prose = doc.querySelector('.prose')
   if (prose) {
     title = title || doc.querySelector('.doc-title')?.textContent?.trim() || undefined

@@ -95,7 +95,7 @@ export default function App() {
     reloadAi,
   } : null, [me, tree, ai])
 
-  if (me === undefined) return <div className="boot"><Spinner label="WorkWiki 여는 중" /></div>
+  if (me === undefined) return <div className="boot"><Spinner label="wikiLink 여는 중" /></div>
   if (!me || !ctx) return <Login onLogin={(m) => setMe(m)} />
 
   return (

@@ -20,7 +20,7 @@ if __name__ == "__main__":
     host = os.environ.get("WORKWIKI_HOST", "0.0.0.0")
     port = int(os.environ.get("WORKWIKI_PORT", "8000"))
     print("=" * 60)
-    print(" WorkWiki 프로토타입")
+    print(" wikiLink 프로토타입")
     print(f"  이 PC에서:        http://localhost:{port}")
     if host == "0.0.0.0":
         print(f"  같은 네트워크에서: http://{lan_ip()}:{port}")

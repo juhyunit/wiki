@@ -11,8 +11,8 @@ import { docChunks, docLinks, highlightKeys, queryTerms, rankChunks } from '../l
 import { exportFilename, toDocx, toHtml, toMarkdown, type ExportMeta } from '../lib/exporters'
 import { nowStr, storage } from '../lib/util'
 
-// v3: 문서 링크·소득 확인 기준 등을 넣은 예시 데이터(예전 브라우저 데이터는 새 예시로 다시 시작)
-const KEY = 'ww-demo-v3'
+// v4: 이름을 wikiLink로 바꾼 예시 데이터(예전 브라우저 데이터는 새 예시로 다시 시작)
+const KEY = 'ww-demo-v4'
 const USER_KEY = 'ww-demo-user'
 type Row = Record<string, any>
 type DB = Record<string, Row[]> & { exported_at: string; seq: Record<string, number> }
@@ -615,6 +615,39 @@ export async function createDemoApi(): Promise<Api> {
         recent, favorites: favs, my_drafts: drafts, pending_role: decide ? 'decide' : 'mine', pending: pending as any, review_due: review, popular,
         counts: { published: vis.filter((m) => m.status === 'published').length, my_dept: liveManuals().filter((m) => m.department_id === u.department_id && m.status === 'published').length, pending: pending.length, overdue: review.filter((m) => (m.next_review_date || '') < today()).length },
       } as T.HomeData
+    }),
+    graph: () => W(() => {
+      const u = cur()
+      const nodes: T.GraphNode[] = [], edges: T.GraphData['edges'] = []
+      const depts = new Set<number>(), tags = new Set<string>(), seen = new Map<number, boolean>()
+      for (const m of liveManuals().filter((m) => m.status !== 'archived').sort((a, b) => a.manual_no.localeCompare(b.manual_no))) {
+        const pub = can(u, 'view_published', m), work = can(u, 'view_work', m)
+        if (!pub && !work) continue
+        seen.set(m.id, work)
+        if (!depts.has(m.department_id)) {
+          depts.add(m.department_id)
+          nodes.push({ id: `d${m.department_id}`, kind: 'dept', label: dept(m.department_id)?.name, ref: m.department_id, mine: m.department_id === u.department_id })
+        }
+        nodes.push({ id: `m${m.id}`, kind: 'manual', label: m.title, ref: m.id, no: m.manual_no, dept: m.department_id, published: pub && !!m.published_version_id })
+        edges.push({ s: `m${m.id}`, t: `d${m.department_id}`, kind: 'dept' })
+        for (const t of m.tags || []) {
+          if (!tags.has(t)) { tags.add(t); nodes.push({ id: `t:${t}`, kind: 'tag', label: t, ref: t }) }
+          edges.push({ s: `m${m.id}`, t: `t:${t}`, kind: 'tag' })
+        }
+      }
+      // 문서 링크: 서버 manual_links와 같은 규칙(공식본 링크, 작업본 링크는 담당 부서만)
+      const pairs = new Set<string>()
+      for (const [a, work] of seen) {
+        const m = byId('manuals', a)!
+        const scopes: number[] = [m.published_version_id, work ? m.latest_version_id : null].filter(Boolean)
+        for (const vid of scopes) {
+          const v = byId('manual_versions', vid)
+          if (!v) continue
+          for (const b of docLinks(v.content_json).keys()) if (b !== a && seen.has(b)) pairs.add(`${a}-${b}`)
+        }
+      }
+      ;[...pairs].sort().forEach((p) => { const [a, b] = p.split('-'); edges.push({ s: `m${a}`, t: `m${b}`, kind: 'link' }) })
+      return { nodes, edges }
     }),
     templates: () => W(() => T_('templates').map((t) => ({ id: t.id, name: t.name, description: t.description, department_id: t.department_id }))),
     departments: () => W(() => T_('departments').filter((d) => d.is_active).map((d) => ({ id: d.id, code: d.code, name: d.name, approval_mode: d.approval_mode }))),

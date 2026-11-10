@@ -20,6 +20,7 @@ export interface Api {
   tree(): Promise<T.TreeDept[]>
   home(): Promise<T.HomeData>
   templates(): Promise<T.Template[]>
+  graph(): Promise<T.GraphData>
   departments(): Promise<T.Dept[]>
   department(id: number): Promise<T.DeptPage>
   deptMembers(id: number): Promise<{ id: number; name: string; position: string | null }[]>

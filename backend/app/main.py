@@ -1,4 +1,4 @@
-"""WorkWiki 프로토타입 서버.
+"""wikiLink 프로토타입 서버.
 
 실행: python -m app  (backend 폴더에서)  → http://localhost:8000
 """
@@ -34,7 +34,7 @@ async def lifespan(_app):
 
 # API 문서 화면은 외부 CDN을 불러오므로 기본으로 끈다(기획서 2.2 내부망 원칙). 필요하면 WORKWIKI_API_DOCS=1
 _docs = os.environ.get("WORKWIKI_API_DOCS") == "1"
-app = FastAPI(title="WorkWiki", version="0.2.0", docs_url="/api/docs" if _docs else None,
+app = FastAPI(title="wikiLink", version="0.2.0", docs_url="/api/docs" if _docs else None,
               openapi_url="/api/openapi.json" if _docs else None, redoc_url=None, lifespan=lifespan)
 
 

@@ -68,6 +68,7 @@ export const httpApi: Api = {
   tree: () => req('GET', '/api/tree'),
   home: () => req('GET', '/api/home'),
   templates: () => req('GET', '/api/templates'),
+  graph: () => req('GET', '/api/graph'),
   departments: () => req('GET', '/api/departments'),
   department: (id) => req('GET', `/api/departments/${id}`),
   deptMembers: (id) => req('GET', `/api/departments/${id}/members`),

@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 > nul
-title WorkWiki
+title wikiLink
 cd /d "%~dp0backend"
 
 where python >nul 2>nul

@@ -1,7 +1,7 @@
 {
-  "name": "workwiki-frontend",
+  "name": "wikilink-frontend",
   "version": "0.1.0",
-  "description": "WorkWiki 프로토타입 화면 (React + TipTap)",
+  "description": "wikiLink 프로토타입 화면 (React + TipTap)",
   "scripts": {
     "dev": "vite",
     "build": "vite build --mode server",

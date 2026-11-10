@@ -268,3 +268,7 @@ export interface AiAdmin {
   questions_7d: number
   demo?: boolean
 }
+
+// ---------------------------------------------------------------- 지식 연결 그래프
+export interface GraphNode { id: string; kind: 'dept' | 'manual' | 'tag'; label: string; ref: number | string; no?: string; dept?: number; published?: boolean; mine?: boolean }
+export interface GraphData { nodes: GraphNode[]; edges: { s: string; t: string; kind: 'dept' | 'tag' | 'link' }[] }

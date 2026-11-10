@@ -31,7 +31,7 @@ export function Login({ onLogin }: { onLogin: (m: Me) => void }) {
   return (
     <div className="login-page">
       <div className="login-wrap">
-      <div className="login-brand"><Logo size={28} /><strong>WorkWiki</strong><span>사내 업무 매뉴얼{isDemo ? ' · 데모' : ''}</span></div>
+      <div className="login-brand"><Logo size={28} /><strong>wikiLink</strong><span>사내 업무 매뉴얼{isDemo ? ' · 데모' : ''}</span></div>
       <div className="login-box">
         <h1>{isDemo ? '계정 선택' : '로그인'}</h1>
         <p className="muted">{isDemo ? '역할을 골라 들어갑니다. 모든 부서·직원·매뉴얼은 가상 데이터입니다.' : '사내 계정으로 로그인하세요.'}</p>

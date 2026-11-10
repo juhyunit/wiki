@@ -166,6 +166,44 @@ def home(u: User = Depends(current_user), conn=Depends(get_conn)):
     }
 
 
+@router.get("/graph")
+def knowledge_graph(u: User = Depends(current_user), conn=Depends(get_conn)):
+    """홈 '지식 연결' 그래프: 볼 수 있는 매뉴얼과 부서·태그·문서 링크. 권한 밖 매뉴얼은 점·선 모두 빠진다."""
+    vis, vp = visible_filter_sql(u)
+    wk, wp = work_filter_sql(u)
+    rows = conn.execute(BASE_SELECT + f" WHERE m.deleted_at IS NULL AND m.status != 'archived' AND (({vis}) OR ({wk}))"
+                        " ORDER BY m.manual_no", (*vp, *wp)).fetchall()
+    nodes, edges, depts, tags = [], [], {}, {}
+    seen: dict[int, bool] = {}  # 매뉴얼 id → 작업본까지 볼 수 있는지
+    for r in rows:
+        pub, work = can(conn, u, "view_published", r), can(conn, u, "view_work", r)
+        if not (pub or work):
+            continue
+        seen[r["id"]] = work
+        if r["department_id"] not in depts:
+            depts[r["department_id"]] = r["dept_name"]
+            nodes.append({"id": f"d{r['department_id']}", "kind": "dept", "label": r["dept_name"], "ref": r["department_id"],
+                          "mine": r["department_id"] == u.department_id})
+        nodes.append({"id": f"m{r['id']}", "kind": "manual", "label": r["title"], "ref": r["id"], "no": r["manual_no"],
+                      "dept": r["department_id"], "published": bool(pub and r["published_version_id"])})
+        edges.append({"s": f"m{r['id']}", "t": f"d{r['department_id']}", "kind": "dept"})
+        for t in json.loads(r["tags"] or "[]"):
+            if t not in tags:
+                tags[t] = True
+                nodes.append({"id": f"t:{t}", "kind": "tag", "label": t, "ref": t})
+            edges.append({"s": f"m{r['id']}", "t": f"t:{t}", "kind": "tag"})
+    links = set()
+    for ln in conn.execute("SELECT source_id, target_id, scope FROM manual_links").fetchall():
+        a, b = ln["source_id"], ln["target_id"]
+        if a not in seen or b not in seen or a == b:
+            continue
+        if ln["scope"] == "latest" and not seen[a]:
+            continue  # 게시 전 작업본의 링크는 담당 부서에만
+        links.add((a, b))
+    edges += [{"s": f"m{a}", "t": f"m{b}", "kind": "link"} for a, b in sorted(links)]
+    return {"nodes": nodes, "edges": edges}
+
+
 @router.get("/templates")
 def templates(u: User = Depends(current_user), conn=Depends(get_conn)):
     rows = conn.execute("SELECT id, name, description, department_id FROM templates WHERE department_id IS NULL OR department_id=?"

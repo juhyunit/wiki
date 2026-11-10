@@ -1,4 +1,4 @@
-# stack-diagram(https://github.com/caru-ini/stack-diagram, MIT) 템플릿으로 WorkWiki 구성도 두 장(As-Is·To-Be) 원본 HTML을 만든다.
+# stack-diagram(https://github.com/caru-ini/stack-diagram, MIT) 템플릿으로 wikiLink 구성도 두 장(As-Is·To-Be) 원본 HTML을 만든다.
 # 다시 만들기:
 #   git clone https://github.com/caru-ini/stack-diagram
 #   SK=stack-diagram/skills/stack-diagram
@@ -115,9 +115,9 @@ asis_edges = """      <path class="e" d="M166 150 H274" marker-end="url(#ar)"/>
       <path class="n dash" d="M166 590 H274" marker-end="url(#ar)"/>
       <text class="el" x="220" y="582" text-anchor="middle">Workers Builds</text>"""
 (OUT / "as-is.src.html").write_text(page(
-    960, 740, "WorkWiki · As-Is · 2026-11", "현재 구성: 프로토타입(PC 1대)",
+    960, 740, "wikiLink · As-Is · 2026-11", "현재 구성: 프로토타입(PC 1대)",
     "서버·DB·파일·로컬 모델이 PC 한 대에서 함께 동작합니다. 외부 API는 부르지 않습니다. 시연용 데모는 서버 없이 브라우저에만 저장합니다.",
-    asis_groups, asis_edges, asis_nodes, LEGEND, "WorkWiki 프로토타입 · FastAPI + SQLite + Ollama"), encoding="utf-8")
+    asis_groups, asis_edges, asis_nodes, LEGEND, "wikiLink 프로토타입 · FastAPI + SQLite + Ollama"), encoding="utf-8")
 
 # ------------------------------------------------------------------ To-Be: 사내 수천 명
 T1, T2, T3 = 120, 360, 600
@@ -157,7 +157,7 @@ tobe_edges = """      <path class="e" d="M136 150 H244" marker-end="url(#ar)"/>
       <path class="n" d="M656 630 H744" marker-end="url(#ar)"/>
       <text class="el" x="700" y="622" text-anchor="middle">SMTP</text>"""
 (OUT / "to-be.src.html").write_text(page(
-    960, 780, "WorkWiki · To-Be · 사내 수천 명", "목표 구성: 사내 운영(수천 명)",
+    960, 780, "wikiLink · To-Be · 사내 수천 명", "목표 구성: 사내 운영(수천 명)",
     "모두 사내망 안에서만 동작합니다. 앱 서버는 상태를 두지 않아 늘릴 수 있고, 데이터·파일은 이중화하며, 모델은 GPU 서버 한 곳에서 제공합니다.",
-    tobe_groups, tobe_edges, tobe_nodes, LEGEND, "WorkWiki 운영 전환안 · 사내 SSO · PostgreSQL · vLLM"), encoding="utf-8")
+    tobe_groups, tobe_edges, tobe_nodes, LEGEND, "wikiLink 운영 전환안 · 사내 SSO · PostgreSQL · vLLM"), encoding="utf-8")
 print("ok")

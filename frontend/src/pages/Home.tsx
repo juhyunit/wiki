@@ -1,6 +1,7 @@
 import { api } from '../api/client'
 import { useApp } from '../app-context'
 import { DocTable } from '../components/DocTable'
+import { KnowledgeGraph } from '../components/KnowledgeGraph'
 import { Link } from '../components/Link'
 import { PageHeader } from '../components/PageHeader'
 import { ErrorBox, Spinner, useLoad } from '../components/ui'
@@ -40,6 +41,7 @@ export function Home() {
                 ))}
               </div>
             )}
+            <KnowledgeGraph />
             <div className="tabs-line" role="tablist">
               {tabs.map((t) => (
                 <button key={t.id} role="tab" aria-selected={tab === t.id} className={cx('tab-line', tab === t.id && 'active')} onClick={() => setTab(t.id)}>

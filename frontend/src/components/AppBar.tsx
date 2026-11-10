@@ -7,9 +7,15 @@ import { navigate, useRoute } from '../lib/router'
 import { cx, relTime } from '../lib/util'
 import { Link } from './Link'
 import { Modal, useDialog, useToast } from './ui'
+import logoUrl from '../assets/wikilink-logo.png'
 
+// wikiLink 로고(펼친 책 + 연결선). 상단 바·로그인의 네이비 바탕에서는 흰 칸 위에 원래 파란색 그대로 둔다
 export function Logo({ size = 22 }: { size?: number }) {
-  return <span className="logo-mark" style={{ width: size, height: size, fontSize: size * 0.58 }} aria-hidden="true">W</span>
+  return (
+    <span className="logo-mark" style={{ width: Math.round(size * 1.36), height: size }} aria-hidden="true">
+      <img src={logoUrl} alt="" />
+    </span>
+  )
 }
 
 function useOutside(open: boolean, close: () => void) {
@@ -165,7 +171,7 @@ export function AppBar() {
     <header className="appbar">
       <div className="appbar-left">
         <button className="bar-btn hamburger" onClick={openSidebar} aria-label="메뉴 열기"><Menu size={18} /></button>
-        <Link to="/" className="brand"><Logo /> <span>WorkWiki</span></Link>
+        <Link to="/" className="brand"><Logo /> <span>wikiLink</span></Link>
       </div>
       <form className="global-search" onSubmit={submit} role="search">
         <Search size={15} />

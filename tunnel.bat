@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 > nul
-title WorkWiki 외부 접속(Cloudflare 임시 터널)
+title wikiLink 외부 접속(Cloudflare 임시 터널)
 REM 사전 준비: cloudflared 설치  →  명령 프롬프트에서  winget install --id Cloudflare.cloudflared
 REM start.bat으로 서버를 먼저 켠 뒤 이 파일을 실행하세요.
 REM 화면에 나오는 https://xxxx.trycloudflare.com 주소를 공유하면 됩니다(창을 닫으면 주소가 사라짐).

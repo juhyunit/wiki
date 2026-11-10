@@ -631,3 +631,17 @@ def test_chunking_and_query_terms():
     assert all(c["anchor"] and c["anchor"].startswith("h-") for c in ch)
     keys, toks = query_terms("대출 심사 시 소득 증빙이 필요한 경우는?")
     assert keys[:4] == ["대출", "심사", "소득", "증빙"] and "서류" in [k for k in toks]
+
+
+def test_knowledge_graph_respects_permissions(clients):
+    """지식 연결 그래프: 볼 수 없는 매뉴얼(부서 한정)은 점도, 그 매뉴얼로 가는 링크 선도 없다."""
+    ga = clients["ga_staff"].get("/api/graph").json()
+    ln = clients["ln_staff"].get("/api/graph").json()
+    ids = lambda g: {n["id"] for n in g["nodes"]}  # noqa: E731
+    assert "m6" not in ids(ga) and "m6" in ids(ln)
+    assert not any("m6" in (e["s"], e["t"]) for e in ga["edges"])
+    assert {"s": "m5", "t": "m6", "kind": "link"} in ln["edges"]
+    assert {"s": "m9", "t": "m10", "kind": "link"} in ga["edges"]
+    assert any(n["kind"] == "tag" and n["label"] == "연차" for n in ga["nodes"])
+    assert all(e["s"] in ids(ga) and e["t"] in ids(ga) for e in ga["edges"])
+    assert TestClient(app).get("/api/graph").status_code == 401

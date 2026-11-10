@@ -1,4 +1,4 @@
-# WorkWiki 개발 규칙 (AI 코딩 도구용, 기획서 13.3 기반)
+# wikiLink 개발 규칙 (AI 코딩 도구용, 기획서 13.3 기반)
 
 ## 스택
 - 화면: React + TypeScript + Vite / TipTap OSS(@tiptap/*만) / lucide-react

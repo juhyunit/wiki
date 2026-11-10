@@ -167,8 +167,8 @@ kbd { font-family: var(--mono); font-size: 11px; color: var(--t3); border: 1px s
 .appbar-left { display: flex; align-items: center; width: var(--sb-w); height: 100%; padding-left: 18px; flex-shrink: 0; }
 .brand { display: inline-flex; align-items: center; gap: 9px; font-weight: 700; font-size: 15.5px; color: var(--t1); text-decoration: none !important; }
 .appbar .brand { color: #fff; }
-.logo-mark { display: inline-grid; place-items: center; border-radius: 3px; background: var(--primary); color: #fff; font-weight: 800; flex-shrink: 0; line-height: 1; }
-.appbar .logo-mark { background: #fff; color: var(--primary); }
+.logo-mark { display: inline-grid; place-items: center; padding: 3px 4px; border-radius: var(--r); background: #fff; flex-shrink: 0; line-height: 0; }
+.logo-mark img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .global-search { display: flex; align-items: center; gap: 8px; width: 460px; max-width: 100%; height: 34px; padding: 0 8px 0 10px; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: var(--r); background: rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.7); }
 .global-search:hover { background: rgba(255, 255, 255, 0.14); }
 .global-search:focus-within { background: var(--surface); border-color: var(--surface); color: var(--t3); }
@@ -395,7 +395,6 @@ kbd { font-family: var(--mono); font-size: 11px; color: var(--t3); border: 1px s
 .login-page { min-height: 100vh; display: flex; justify-content: center; align-items: flex-start; padding: 64px 16px 40px; background: linear-gradient(var(--primary) 0 210px, var(--bg) 210px); }
 .login-wrap { width: 100%; max-width: 420px; }
 .login-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
-.login-brand .logo-mark { background: #fff; color: var(--primary); }
 .login-brand strong { font-size: 17px; font-weight: 700; color: #fff; }
 .login-brand span { font-size: 13.5px; color: rgba(255, 255, 255, 0.7); }
 .login-box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 24px 24px 18px; }
@@ -818,6 +817,24 @@ mark { background: #fbe2cf; color: inherit; padding: 0 1px; }
   .bar-ask span { display: none; }
   .bar-ask { padding: 0 8px; }
 }
+
+/* ------------------------------------------------------------ 홈: 지식 연결 그래프 */
+.kg { margin-bottom: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.kg-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; padding: 8px 10px 8px 16px; border-bottom: 1px solid var(--line-soft); }
+.kg-head h2 { margin: 0; font-size: 14px; font-weight: 600; color: var(--primary); }
+.kg-count { font-size: 12.5px; color: var(--t3); }
+.kg-tools { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.kg-tools .check { margin-right: 8px; color: var(--t2); }
+.kg-btn { min-width: 28px; height: 26px; padding: 0 6px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--t2); font-size: 14px; line-height: 1; }
+.kg-btn.wide { font-size: 12.5px; padding: 0 8px; }
+.kg-btn:hover { background: var(--hover); color: var(--t1); }
+.kg-canvas { position: relative; height: 340px; background: var(--surface); }
+.kg-canvas canvas { display: block; touch-action: pan-y; cursor: grab; }
+.kg-canvas.pointing canvas { cursor: pointer; }
+.kg-loading { position: absolute; inset: 0; display: grid; place-items: center; }
+.kg-tip { position: absolute; left: 12px; bottom: 10px; display: flex; flex-direction: column; gap: 1px; max-width: calc(100% - 24px); padding: 6px 10px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); font-size: 12.5px; color: var(--t3); pointer-events: none; }
+.kg-tip strong { font-size: 13.5px; font-weight: 600; color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 880px) { .kg-canvas { height: 280px; } }
 
 /* ------------------------------------------------------------ 반응형 */
 .hide-md { }

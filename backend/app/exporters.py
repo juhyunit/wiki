@@ -328,7 +328,7 @@ def to_markdown(doc, meta: Meta) -> str:
     fm = {"title": meta.title, "manual_no": meta.manual_no, "department": meta.department_name, "category": meta.category_name or "",
           "edition": meta.edition_label, "published_at": (meta.published_at or "")[:10], "owner": meta.owner_name or "",
           "review_cycle_months": meta.review_cycle_months, "next_review_date": meta.next_review_date or "",
-          "visibility": meta.visibility_label, "tags": meta.tags, "source": f"WorkWiki {meta.source_label}",
+          "visibility": meta.visibility_label, "tags": meta.tags, "source": f"wikiLink {meta.source_label}",
           "exported_at": meta.exported_at, "exported_by": meta.exported_by}
     head = ["---"] + [f"{k}: {json.dumps(v, ensure_ascii=False)}" for k, v in fm.items()] + ["---", "", f"# {meta.title}", ""]
     body = _md_blocks((doc or {}).get("content"), meta)
@@ -397,13 +397,13 @@ def to_html(doc, meta: Meta, image_data) -> str:
     tags = f'<div class="tags">{" ".join("#" + esc(t) for t in meta.tags)}</div>' if meta.tags else ""
     return f"""<!DOCTYPE html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="generator" content="WorkWiki"><title>{esc(meta.title)} ({esc(meta.manual_no)})</title><style>{EXPORT_CSS}</style></head>
+<meta name="generator" content="wikiLink"><title>{esc(meta.title)} ({esc(meta.manual_no)})</title><style>{EXPORT_CSS}</style></head>
 <body><article class="doc">
 <h1 class="doc-title">{esc(meta.title)}</h1>
 <section class="info"><div class="info-head"><span>문서 관리 정보</span><span>{esc(meta.source_label)}</span></div><dl class="info-grid">{grid}</dl></section>
 {tags}<div class="prose">{body}</div>
-<footer class="foot">WorkWiki에서 내보냄 · {esc(meta.exported_at)} · {esc(meta.exported_by)} · {esc(meta.manual_no)} {esc(meta.edition_label)}.
-이 파일은 내보낸 시점의 사본입니다. 최신 공식본은 WorkWiki에서 확인하세요.</footer>
+<footer class="foot">wikiLink에서 내보냄 · {esc(meta.exported_at)} · {esc(meta.exported_by)} · {esc(meta.manual_no)} {esc(meta.edition_label)}.
+이 파일은 내보낸 시점의 사본입니다. 최신 공식본은 wikiLink에서 확인하세요.</footer>
 </article></body></html>
 """
 
@@ -730,7 +730,7 @@ class Docx:
         sect = (f'<w:sectPr><w:footerReference w:type="default" r:id="{footer_rid}"/><w:pgSz w:w="11906" w:h="16838"/>'
                 '<w:pgMar w:top="1418" w:right="1134" w:bottom="1418" w:left="1134" w:header="709" w:footer="567" w:gutter="0"/></w:sectPr>')
         document = f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:document {W_NS}><w:body>{head}{body}{sect}</w:body></w:document>'
-        foot_text = f"WorkWiki · {m.manual_no} {m.title} · {m.edition_label} · 출력 {m.exported_at} {m.exported_by}"
+        foot_text = f"wikiLink · {m.manual_no} {m.title} · {m.edition_label} · 출력 {m.exported_at} {m.exported_by}"
         footer = (f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:ftr {W_NS}>'
                   f'<w:p><w:pPr><w:tabs><w:tab w:val="right" w:pos="{TEXT_W}"/></w:tabs></w:pPr>{self.run(foot_text, color="#758196", size=11)}'
                   f'<w:r><w:rPr><w:color w:val="758196"/><w:sz w:val="16"/></w:rPr><w:tab/></w:r>'
@@ -768,7 +768,7 @@ ROOT_RELS = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>"""
 
 APP_XML = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>WorkWiki</Application></Properties>"""
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>wikiLink</Application></Properties>"""
 
 SETTINGS_XML = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:defaultTabStop w:val="800"/><w:characterSpacingControl w:val="doNotCompress"/><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>"""
@@ -778,7 +778,7 @@ def core_xml(m: Meta) -> str:
     now = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
     return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" '
             'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
-            f"<dc:title>{x(m.title)}</dc:title><dc:subject>{x(m.manual_no)} {x(m.edition_label)}</dc:subject><dc:creator>WorkWiki</dc:creator>"
+            f"<dc:title>{x(m.title)}</dc:title><dc:subject>{x(m.manual_no)} {x(m.edition_label)}</dc:subject><dc:creator>wikiLink</dc:creator>"
             f"<cp:keywords>{x(', '.join(m.tags))}</cp:keywords><cp:lastModifiedBy>{x(m.exported_by)}</cp:lastModifiedBy>"
             f'<dcterms:created xsi:type="dcterms:W3CDTF">{now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">{now}</dcterms:modified></cp:coreProperties>')
 
@@ -798,11 +798,11 @@ STYLES_XML = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:style
               '<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>'
               '<w:pPr><w:spacing w:after="120"/></w:pPr><w:rPr><w:b/><w:bCs/><w:color w:val="263B63"/><w:sz w:val="44"/><w:szCs w:val="44"/></w:rPr></w:style>'
               + _heading_style(1, 34, 360) + _heading_style(2, 30, 320) + _heading_style(3, 26, 260) + _heading_style(4, 23, 220) +
-              '<w:style w:type="paragraph" w:styleId="WWCaption"><w:name w:val="WorkWiki Caption"/><w:basedOn w:val="Normal"/><w:rPr><w:color w:val="758196"/><w:sz w:val="18"/></w:rPr></w:style>'
-              '<w:style w:type="character" w:styleId="WWLink"><w:name w:val="WorkWiki Link"/><w:rPr><w:color w:val="263B63"/><w:u w:val="single"/></w:rPr></w:style>'
+              '<w:style w:type="paragraph" w:styleId="WWCaption"><w:name w:val="wikiLink Caption"/><w:basedOn w:val="Normal"/><w:rPr><w:color w:val="758196"/><w:sz w:val="18"/></w:rPr></w:style>'
+              '<w:style w:type="character" w:styleId="WWLink"><w:name w:val="wikiLink Link"/><w:rPr><w:color w:val="263B63"/><w:u w:val="single"/></w:rPr></w:style>'
               '<w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/><w:semiHidden/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/>'
               '<w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style>'
-              '<w:style w:type="table" w:styleId="WWTable"><w:name w:val="WorkWiki Table"/><w:basedOn w:val="TableNormal"/><w:pPr><w:spacing w:after="0" w:line="264" w:lineRule="auto"/></w:pPr>'
+              '<w:style w:type="table" w:styleId="WWTable"><w:name w:val="wikiLink Table"/><w:basedOn w:val="TableNormal"/><w:pPr><w:spacing w:after="0" w:line="264" w:lineRule="auto"/></w:pPr>'
               '<w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="CBD2DC"/><w:left w:val="single" w:sz="4" w:space="0" w:color="CBD2DC"/>'
               '<w:bottom w:val="single" w:sz="4" w:space="0" w:color="CBD2DC"/><w:right w:val="single" w:sz="4" w:space="0" w:color="CBD2DC"/>'
               '<w:insideH w:val="single" w:sz="4" w:space="0" w:color="CBD2DC"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="CBD2DC"/></w:tblBorders>'
@@ -1112,7 +1112,7 @@ def to_pdf(doc, meta: Meta, image_bytes) -> bytes:
     story += [Spacer(1, 6), HRFlowable(width="100%", thickness=0.8, color=navy, spaceBefore=4, spaceAfter=10)]
     story += blocks((doc or {}).get("content"), text_w)
 
-    foot = f"WorkWiki · {meta.manual_no} {meta.title} · {meta.edition_label}"
+    foot = f"wikiLink · {meta.manual_no} {meta.title} · {meta.edition_label}"
     stamp = f"출력 {meta.exported_at} {meta.exported_by}"
 
     class NumberedCanvas(rl_canvas.Canvas):
@@ -1140,6 +1140,6 @@ def to_pdf(doc, meta: Meta, image_bytes) -> bytes:
 
     buf = io.BytesIO()
     d = SimpleDocTemplate(buf, pagesize=A4, leftMargin=margin_x, rightMargin=margin_x, topMargin=margin_y, bottomMargin=margin_y,
-                          title=meta.title, author="WorkWiki", subject=f"{meta.manual_no} {meta.edition_label}", creator="WorkWiki")
+                          title=meta.title, author="wikiLink", subject=f"{meta.manual_no} {meta.edition_label}", creator="wikiLink")
     d.build(story, canvasmaker=NumberedCanvas)
     return buf.getvalue()
