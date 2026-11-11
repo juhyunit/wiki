@@ -394,7 +394,7 @@ kbd { font-family: var(--mono); font-size: 11px; color: var(--t3); border: 1px s
 /* ------------------------------------------------------------ 로그인: 상단 네이비 띠 위에 로그인 상자 */
 .login-page { min-height: 100vh; display: flex; justify-content: center; align-items: flex-start; padding: 64px 16px 40px; background: linear-gradient(var(--primary) 0 210px, var(--bg) 210px); }
 .login-wrap { width: 100%; max-width: 420px; }
-.login-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.login-brand { display: flex; align-items: center; gap: 7px; margin-bottom: 18px; line-height: 1; }
 .login-brand strong { font-size: 17px; font-weight: 700; color: #fff; }
 .login-brand span { font-size: 13.5px; color: rgba(255, 255, 255, 0.7); }
 .login-box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 24px 24px 18px; }

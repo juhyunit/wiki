@@ -9,10 +9,10 @@ import { Link } from './Link'
 import { Modal, useDialog, useToast } from './ui'
 import logoUrl from '../assets/wikilink-logo.png'
 
-// wikiLink 로고(펼친 책 + 연결선). 상단 바·로그인의 네이비 바탕과 어울리는 반투명 칸 위에 표시
-export function Logo({ size = 22 }: { size?: number }) {
+// wikiLink 로고(펼친 책 + 연결선). 배경 칸 없이 네이비 상단 바 위에 바로 표시
+export function Logo({ size = 20 }: { size?: number }) {
   return (
-    <span className="logo-mark" style={{ width: Math.round(size * 1.36), height: size }} aria-hidden="true">
+    <span className="logo-mark" style={{ width: Math.round(size * 1.55), height: size }} aria-hidden="true">
       <img src={logoUrl} alt="" />
     </span>
   )
