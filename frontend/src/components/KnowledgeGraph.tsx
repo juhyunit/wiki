@@ -12,9 +12,9 @@ type SimEdge = { s: SimNode; t: SimNode; kind: 'dept' | 'tag' | 'link' }
 // 첫 번째 참고 이미지의 회색조를 바탕으로, 부서·선택·문서 링크에만 브랜드 네이비를 쓴다(styles.css 토큰과 같은 값)
 // 기본은 첫 번째 참고 이미지의 회색조. 많이 이어진 점일수록 청록 → 파스텔 주황(이 그래프에서만 쓰는 데이터 색)
 const C = {
-  edge: '#dde2e9', edgeLink: '#b7c3d6', hi: '#263b63', hiEdge: '#263b63', label: '#3b475a', halo: 'rgba(247,248,250,0.92)',
+  edge: 'rgba(160,170,184,0.42)', edgeLink: 'rgba(110,132,168,0.55)', hi: '#263b63', hiEdge: '#263b63', label: '#3b475a', halo: 'rgba(247,248,250,0.92)',
 }
-const DENSITY = ['#c6ccd5', '#4a5466', '#5aa9a0', '#e9a06c'] // 적음 → 보통 → 많음 → 가장 많음
+const DENSITY = ['#cdd2d9', '#525c6c', '#5aa9a0', '#e9a06c'] // 적음 → 보통 → 많음 → 가장 많음
 const densityColor = (n: { deg: number }, cut: number[]) => DENSITY[n.deg >= cut[2] ? 3 : n.deg >= cut[1] ? 2 : n.deg >= cut[0] ? 1 : 0]
 const LEN = { dept: 80, tag: 40, link: 120 }
 const STRENGTH = { dept: 0.06, tag: 0.09, link: 0.025 }
@@ -53,7 +53,7 @@ function build(data: GraphData, w: number, h: number) {
     }
   }
   // 크기는 종류가 아니라 이어진 수로만(부서가 혼자 커지지 않게, 차이는 작게)
-  for (const n of byId.values()) n.r = 2.4 + Math.min(3.2, Math.sqrt(n.deg) * 0.9)
+  for (const n of byId.values()) n.r = 1.7 + Math.min(3.4, Math.sqrt(n.deg) * 0.72)
   // 연결 밀도 구간: 이어진 수 분포의 50·80·94% 지점
   const degs = [...byId.values()].map((n) => n.deg).sort((a, b) => a - b)
   const q = (p: number) => degs[Math.min(degs.length - 1, Math.floor(degs.length * p))] || 1
@@ -71,7 +71,7 @@ function tick(nodes: SimNode[], edges: SimEdge[], alpha: number) {
       let d2 = dx * dx + dy * dy
       if (d2 < 0.01) { dx = 0.1; dy = 0.1; d2 = 0.02 }
       if (d2 > 90000) continue
-      const k = (a.kind === 'tag' || b.kind === 'tag' ? 260 : 900) * alpha / d2
+      const k = (a.kind === 'tag' || b.kind === 'tag' ? 420 : 1100) * alpha / d2
       const d = Math.sqrt(d2)
       const fx = (dx / d) * k, fy = (dy / d) * k
       a.vx -= fx; a.vy -= fy
@@ -87,9 +87,16 @@ function tick(nodes: SimNode[], edges: SimEdge[], alpha: number) {
     e.t.vx -= fx; e.t.vy -= fy
   }
   for (const n of nodes) {
-    // 가운데로 같은 힘으로 끌어 전체가 둥근 구 모양이 되게
-    n.vx -= n.x * 0.018 * alpha
-    n.vy -= n.y * 0.018 * alpha
+    // 가운데로 같은 힘으로 끌고, 원판 밖으로 나가면 세게 되돌려 전체가 둥근 원 안에 고르게 퍼지게
+    n.vx -= n.x * 0.012 * alpha
+    n.vy -= n.y * 0.012 * alpha
+    const R = 26 * Math.sqrt(nodes.length)
+    const dist = Math.hypot(n.x, n.y)
+    if (dist > R) {
+      const f = ((dist - R) / dist) * 0.35
+      n.vx -= n.x * f
+      n.vy -= n.y * f
+    }
     if (n.fixed) { n.vx = 0; n.vy = 0; continue }
     n.vx *= 0.6
     n.vy *= 0.6
@@ -133,37 +140,37 @@ export function KnowledgeGraph() {
     const on = (n: SimNode) => !hv || n === hv || near!.has(n)
     for (const e of s.edges) {
       const hot = hv && (e.s === hv || e.t === hv)
-      ctx.globalAlpha = hv && !hot ? 0.25 : 1
+      ctx.globalAlpha = hv && !hot ? 0.2 : 1
       ctx.strokeStyle = hot ? C.hiEdge : e.kind === 'link' ? C.edgeLink : C.edge
-      ctx.lineWidth = (hot ? 1.4 : e.kind === 'link' ? 1.3 : 0.9) / k
+      ctx.lineWidth = (hot ? 1 : e.kind === 'link' ? 0.8 : 0.55) / k
       ctx.beginPath()
       ctx.moveTo(e.s.x, e.s.y)
       ctx.lineTo(e.t.x, e.t.y)
       ctx.stroke()
     }
     for (const n of s.nodes) {
-      ctx.globalAlpha = on(n) ? 1 : 0.25
+      ctx.globalAlpha = on(n) ? 1 : 0.22
       ctx.fillStyle = n === hv || (hv && near!.has(n)) ? C.hi : densityColor(n, s.cut)
       ctx.beginPath()
-      ctx.arc(n.x, n.y, n.r + (n === hv ? 1.5 : 0), 0, Math.PI * 2)
+      ctx.arc(n.x, n.y, (n.r + (n === hv ? 1.2 : 0)) / k, 0, Math.PI * 2)
       ctx.fill()
     }
-    // 이름: 부서는 늘, 매뉴얼은 가까이 보거나 마우스를 올렸을 때
+    // 이름: 마우스를 올린 점과 이어진 점만
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
     ctx.lineJoin = 'round'
     for (const n of s.nodes) {
       const focus = hv && (n === hv || (near!.has(n) && n.kind !== 'tag'))
       if (!focus) continue
-      const size = (n === hv ? 12.5 : 11) / k
+      const size = (n === hv ? 12 : 10.5) / k
       ctx.font = `${n === hv ? 600 : 400} ${size}px ui-sans-serif, -apple-system, 'Segoe UI', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif`
       const text = n.kind === 'tag' ? `#${n.label}` : n.label
       ctx.globalAlpha = 1
       ctx.strokeStyle = C.halo
       ctx.lineWidth = 3 / k
-      ctx.strokeText(text, n.x, n.y + n.r + 3 / k)
+      ctx.strokeText(text, n.x, n.y + (n.r + 3) / k)
       ctx.fillStyle = n === hv ? C.hi : C.label
-      ctx.fillText(text, n.x, n.y + n.r + 3 / k)
+      ctx.fillText(text, n.x, n.y + (n.r + 3) / k)
     }
     ctx.globalAlpha = 1
   }
@@ -175,10 +182,10 @@ export function KnowledgeGraph() {
     if (!s || !s.nodes.length || !v.w) return
     let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity
     for (const n of s.nodes) {
-      x1 = Math.min(x1, n.x - n.r); y1 = Math.min(y1, n.y - n.r)
-      x2 = Math.max(x2, n.x + n.r); y2 = Math.max(y2, n.y + n.r + 16)
+      x1 = Math.min(x1, n.x); y1 = Math.min(y1, n.y)
+      x2 = Math.max(x2, n.x); y2 = Math.max(y2, n.y)
     }
-    const k = Math.max(0.4, Math.min(2.4, (v.w - 56) / Math.max(1, x2 - x1), (v.h - 40) / Math.max(1, y2 - y1)))
+    const k = Math.max(0.4, Math.min(3, (v.w - 56) / Math.max(1, x2 - x1), (v.h - 40) / Math.max(1, y2 - y1)))
     v.k = k
     v.x = -((x1 + x2) / 2) * k
     v.y = -((y1 + y2) / 2) * k
@@ -256,7 +263,7 @@ export function KnowledgeGraph() {
     let best: SimNode | null = null, bd = Infinity
     for (const n of s.nodes) {
       const d = Math.hypot(n.x - p.x, n.y - p.y)
-      const lim = n.r + 6 / view.current.k
+      const lim = (n.r + 5) / view.current.k
       if (d < lim && d < bd) { best = n; bd = d }
     }
     return best
