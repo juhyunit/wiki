@@ -11,8 +11,8 @@ import { docChunks, docLinks, highlightKeys, queryTerms, rankChunks } from '../l
 import { exportFilename, toDocx, toHtml, toMarkdown, type ExportMeta } from '../lib/exporters'
 import { nowStr, storage } from '../lib/util'
 
-// v4: 이름을 wikiLink로 바꾼 예시 데이터(예전 브라우저 데이터는 새 예시로 다시 시작)
-const KEY = 'ww-demo-v4'
+// v5: 부서 개편(여신기획부·IT금융개발부·리스크총괄부·개인고객부·경제연구소·AX디지털추진부) 및 게시 매뉴얼 50개 추가
+const KEY = 'ww-demo-v5'
 const USER_KEY = 'ww-demo-user'
 type Row = Record<string, any>
 type DB = Record<string, Row[]> & { exported_at: string; seq: Record<string, number> }
